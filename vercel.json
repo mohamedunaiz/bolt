@@ -8,6 +8,16 @@
       "maxDuration": 60
     }
   },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/[...path]"
+    },
+    {
+      "source": "/((?!api/|.*\\..*).*)",
+      "destination": "/index.html"
+    }
+  ],
   "crons": [
     {
       "path": "/api/news/sync",

@@ -140,20 +140,52 @@ function computeTitleSimilarity(t1: string, t2: string): number {
 }
 
 export function deduplicateArticles(newArticles: NewsArticle[], existingArticles: NewsArticle[]): NewsArticle[] {
-  const merged = [...existingArticles];
-  
-  for (const incoming of newArticles) {
-    const isDuplicate = merged.some((ex) => {
-      if (ex.headline.toLowerCase().trim() === incoming.headline.toLowerCase().trim()) return true;
-      return computeTitleSimilarity(ex.headline, incoming.headline) > 0.65;
-    });
+  const merged: NewsArticle[] = [];
+  const seenIds = new Set<string>();
+  const seenHeadlines = new Set<string>();
 
+  // Filter stale articles older than 30 days
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const filteredExisting = (existingArticles || []).filter((art) => {
+    if (!art || !art.headline) return false;
+    const time = Date.parse(art.date);
+    return !Number.isFinite(time) || time >= thirtyDaysAgo;
+  });
+
+  // Prioritize fresh incoming articles
+  for (const incoming of newArticles || []) {
+    if (!incoming || !incoming.headline) continue;
+    const normTitle = incoming.headline.toLowerCase().trim();
+    if (incoming.id && seenIds.has(incoming.id)) continue;
+    if (seenHeadlines.has(normTitle)) continue;
+
+    const isDuplicate = merged.some(
+      (ex) => computeTitleSimilarity(ex.headline, incoming.headline) > 0.65
+    );
     if (!isDuplicate) {
-      merged.unshift(incoming);
+      if (incoming.id) seenIds.add(incoming.id);
+      seenHeadlines.add(normTitle);
+      merged.push(incoming);
     }
   }
 
-  return merged.slice(0, 100); // Retain top 100 recent articles
+  // Append existing articles
+  for (const existing of filteredExisting) {
+    const normTitle = existing.headline.toLowerCase().trim();
+    if (existing.id && seenIds.has(existing.id)) continue;
+    if (seenHeadlines.has(normTitle)) continue;
+
+    const isDuplicate = merged.some(
+      (m) => computeTitleSimilarity(m.headline, existing.headline) > 0.65
+    );
+    if (!isDuplicate) {
+      if (existing.id) seenIds.add(existing.id);
+      seenHeadlines.add(normTitle);
+      merged.push(existing);
+    }
+  }
+
+  return merged.slice(0, 100); // Retain top 100 high-yield articles
 }
 
 export interface SourceHealth {

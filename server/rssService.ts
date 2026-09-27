@@ -1,5 +1,14 @@
 import { XMLParser } from "fast-xml-parser";
+import crypto from "crypto";
 import { NewsArticle } from "../src/types";
+
+export function generateDeterministicArticleId(canonicalUrl: string, source: string, headline: string): string {
+  const normUrl = (canonicalUrl || "").trim().toLowerCase();
+  const normSource = (source || "").trim().toLowerCase();
+  const normHeadline = (headline || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const hash = crypto.createHash("sha256").update(`${normUrl}|${normSource}|${normHeadline}`).digest("hex");
+  return `art_${hash.slice(0, 16)}`;
+}
 
 export interface RssFeedPreset {
   id: string;
@@ -548,7 +557,7 @@ export function parseFeedContent(
     const { prelimsFact, mainsRelevance, possibleMainsQuestion, keyHighlights } = generateRelevancePointers(headline, summary, source);
 
     articles.push({
-      id: `feed-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`,
+      id: generateDeterministicArticleId(link, source, headline),
       date,
       source,
       headline,

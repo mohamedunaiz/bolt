@@ -152,7 +152,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
   const [feedSourceInput, setFeedSourceInput] = useState<SavedFeed["source"]>("The Hindu");
   const [isFetchingFeed, setIsFetchingFeed] = useState<boolean>(false);
   const [isSyncingAll, setIsSyncingAll] = useState<boolean>(false);
-  const [feedNotification, setFeedNotification] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
+  const [feedNotification, setFeedNotification] = useState<{ type: "success" | "error" | "info" | "warning"; message: string } | null>(null);
 
   // Saved Feeds
   const [savedFeeds, setSavedFeeds] = useState<SavedFeed[]>(() => {
@@ -349,7 +349,21 @@ export const NewsView: React.FC<NewsViewProps> = ({
       const contentType = response.headers.get("content-type")?.toLowerCase() || "";
       const data = contentType.includes("application/json")
         ? await response.json()
-        : { success: false, error: `News service returned an unexpected response (${response.status}).` };
+        : { success: false, state: "backend_failure", error: `News service returned HTTP ${response.status}.` };
+
+      // Distinguish specific failure modes
+      if (response.status === 401 || data.state === "auth_failure") {
+        throw new Error("Authentication failure: Please log in to access verified current affairs.");
+      }
+      if (response.status >= 500 || data.state === "backend_failure") {
+        throw new Error(data.message || data.error || "Backend failure: Current affairs service is temporarily unavailable.");
+      }
+      if (data.state === "upstream_failure") {
+        setFeedNotification({
+          type: "warning",
+          message: "Temporary upstream failure: News sources are experiencing intermittent connectivity; retaining cached articles.",
+        });
+      }
 
       if (data.success && Array.isArray(data.articles)) {
         const existingHeadlines = new Set(articles.map((a) => a.headline.toLowerCase().trim()));
@@ -378,19 +392,19 @@ export const NewsView: React.FC<NewsViewProps> = ({
           }
           setFeedNotification({
             type: "success",
-            message: `Background Task: Ingested ${fresh.length} fresh daily current affairs articles from reliable sources (${(data.sources || []).slice(0, 3).join(", ")})!`,
+            message: `Ingested ${fresh.length} fresh daily current affairs articles from reliable sources (${(data.sources || []).slice(0, 3).join(", ")})!`,
           });
         } else if (isManualTrigger) {
           const infoMessage =
-            data.state === "unavailable"
-              ? "The current affairs service is temporarily unavailable. Showing cached news; it will refresh automatically."
-              : data.state === "empty"
-                ? "Today's current affairs are being refreshed on the server. Please check back shortly."
+            data.state === "no_articles_yet"
+              ? "No articles stored yet. Scheduled sync will ingest fresh current affairs shortly."
+              : data.state === "cached"
+                ? "Upstream sources temporarily unavailable; showing verified cached news."
                 : data.stale
-                  ? "Showing cached news. The feed is temporarily stale and will refresh automatically."
+                  ? "Showing cached news. The feed will refresh on the next cycle."
                   : data.message || "Daily current affairs are fully up to date.";
           setFeedNotification({
-            type: data.state === "unavailable" ? "error" : "info",
+            type: data.state === "no_articles_yet" ? "info" : "info",
             message: infoMessage,
           });
         }

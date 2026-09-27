@@ -32,6 +32,10 @@ export interface HistoricalPyq {
   optionAnalysis?: Array<{ optionKey: string; analysis: string; isCorrect: boolean }>;
   historicalContext?: string;
   relatedConcept?: string;
+  verificationTier?: "VERIFIED_OFFICIAL_PYQ" | "VERIFIED_RELIABLE_ARCHIVE" | "PRACTICE_QUESTION";
+  source?: string;
+  sourceUrl?: string | null;
+  officialAnswerVerified?: boolean;
 }
 
 export type GraphNodeType = "topic" | "thinker" | "pyq" | "concept";
@@ -419,6 +423,9 @@ export interface MainsModelAnswer {
   wayForward: string[];
   conclusion: string;
   relevantCommitteesAndArticles: string[];
+  verificationTier?: VerificationTier;
+  source?: string;
+  sourceUrl?: string | null;
 }
 
 export interface EvaluationCriteria {
@@ -901,6 +908,11 @@ export interface NcertChapter {
 // -------------------------------------------------------------
 export type PyqEra = "19th_century" | "early_20th_century" | "post_independence" | "modern" | "all";
 
+export type VerificationTier =
+  | "VERIFIED_OFFICIAL_PYQ"
+  | "VERIFIED_RELIABLE_ARCHIVE"
+  | "PRACTICE_QUESTION";
+
 export interface HistoricalPYQ {
   id: string;
   year: number;
@@ -919,6 +931,10 @@ export interface HistoricalPYQ {
   optionAnalysis?: { optionKey: string; analysis: string; isCorrect: boolean }[];
   historicalContext?: string;
   relatedConcept?: string;
+  verificationTier?: VerificationTier;
+  source?: string;
+  sourceUrl?: string | null;
+  officialAnswerVerified?: boolean;
 }
 
 

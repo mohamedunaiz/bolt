@@ -14,7 +14,10 @@ import {
   getPipelineStatus,
   loadCurrentAffairsFromDisk,
   loadCurrentAffairsFromFirestore,
+  saveCurrentAffairsToFirestore,
+  deduplicateArticles,
 } from "./server/currentAffairsPipeline";
+import { NewsArticle } from "./src/types";
 import {
   registerUser,
   registerUserAsync,
@@ -56,6 +59,7 @@ import {
   requireAuth,
   requireAdmin,
   requireOwner,
+  verifyToken,
 } from "./server/authMiddleware";
 import {
   generalApiLimiter,
@@ -541,7 +545,7 @@ app.post("/api/python/materials/process", requireAuth, heavyTaskLimiter, (req, r
 });
 
 // 1855 - 2026 PYQ Database with Peripheral Areas & Current Affairs Engine (Secured)
-app.get("/api/python/pyqs", requireAuth, generalApiLimiter, (req, res) => {
+app.get("/api/python/pyqs", authenticateToken, generalApiLimiter, (req, res) => {
   try {
     const era = (req.query.era as string) || "all";
     const peripheral = req.query.peripheral === "true";
@@ -573,7 +577,7 @@ app.get("/api/python/pyqs", requireAuth, generalApiLimiter, (req, res) => {
 });
 
 // NCERT Foundation Chapters & Curricula (Class 6 - 12) (Secured)
-app.get("/api/python/ncert/chapters", requireAuth, generalApiLimiter, (req, res) => {
+app.get("/api/python/ncert/chapters", authenticateToken, generalApiLimiter, (req, res) => {
   try {
     const subject = (req.query.subject as string) || "all";
     const classNum = req.query.classNum ? parseInt(req.query.classNum as string, 10) : undefined;
@@ -1289,17 +1293,13 @@ app.post("/api/news/fetch-feed", requireAuth, async (req, res) => {
 });
 
 // Sync multiple feeds in batch — every feed URL, including client-supplied ones, is checked
-// against the approved-source allowlist before being fetched.
+// against the approved-source allowlist before being fetched. Persists successful results to Firestore.
 app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
   try {
     const requestedFeeds: { url: string; sourceName?: string }[] | undefined = req.body.feeds;
     const feedUrls: { url: string; sourceName?: string }[] = (requestedFeeds && requestedFeeds.length > 0)
       ? requestedFeeds.filter((f) => f && typeof f.url === "string" && isApprovedFeedUrl(f.url))
-      : [
-          { url: "https://www.thehindu.com/opinion/editorial/feeder/default.rss", sourceName: "The Hindu" },
-          { url: "https://archive.pib.gov.in/rss/rss.aspx", sourceName: "PIB" },
-          { url: "https://indianexpress.com/section/explained/feed/", sourceName: "The Indian Express" },
-        ];
+      : POPULAR_UPSC_FEEDS.map((f) => ({ url: f.url, sourceName: f.name }));
 
     if (feedUrls.length === 0) {
       return res.status(400).json({ success: false, error: "No approved feed URLs supplied." });
@@ -1309,21 +1309,16 @@ app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
       feedUrls.map((f) => fetchAndParseRssFeed(f.url, f.sourceName))
     );
 
-    // Merge articles and avoid duplicate headlines
-    const seenHeadlines = new Set<string>();
-    const mergedArticles = [];
-
+    const freshArticles: NewsArticle[] = [];
     for (const r of results) {
       if (r && r.articles) {
-        for (const art of r.articles) {
-          const normTitle = art.headline.toLowerCase().trim();
-          if (!seenHeadlines.has(normTitle)) {
-            seenHeadlines.add(normTitle);
-            mergedArticles.push(art);
-          }
-        }
+        freshArticles.push(...r.articles);
       }
     }
+
+    // Load existing Firestore cache, merge & deduplicate
+    const previousSnapshot = await loadCurrentAffairsFromFirestore();
+    const mergedArticles = deduplicateArticles(freshArticles, previousSnapshot.articles);
 
     const failedSources = results
       .filter((result) => !result?.success || !result.articles?.length)
@@ -1339,13 +1334,18 @@ app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
       });
     }
 
+    // Persist to Firestore
+    await saveCurrentAffairsToFirestore(mergedArticles);
+
     res.json({
       success: true,
       count: mergedArticles.length,
+      newlyIngested: freshArticles.length,
       articles: mergedArticles,
       sourcesSynced: results.filter((result) => result?.success).map((result) => result.sourceDetected),
       failedSources,
       attemptedSources,
+      timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
     console.error("Sync all feeds error:", error);
@@ -1453,75 +1453,119 @@ app.post("/api/news/pipeline/mcqs", requireAuth, aiRateLimiter, (req, res) => {
 });
 
 // 1.1.2 Daily Current Affairs Scheduled Trigger & Auto-Sync API
-  app.get("/api/news/daily-current-affairs", requireAuth, async (_req, res) => {
+app.get("/api/news/daily-current-affairs", authenticateToken, async (_req, res) => {
   res.set("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
-  // This read must never surface as a 5xx — degrade to an empty, retry-able payload.
   try {
-  const snapshot = await loadCurrentAffairsFromFirestore();
-  const sources = [...new Set(snapshot.articles.map((article) => article.source).filter(Boolean))];
-  const updatedAtMs = snapshot.updatedAt ? Date.parse(snapshot.updatedAt) : NaN;
-  const stale = !Number.isFinite(updatedAtMs) || Date.now() - updatedAtMs > 24 * 60 * 60 * 1000;
-  const state = snapshot.articles.length > 0 ? "ok" : "empty";
-  res.status(200).json({
-    success: true,
-    state,
-    articles: snapshot.articles,
-    mcqs: snapshot.mcqs,
-    sources,
-    updatedAt: snapshot.updatedAt,
-    lastUpdated: snapshot.updatedAt,
-    stale,
-    ...(state === "empty" ? { message: "News feed is being refreshed. Please try again shortly." } : {}),
-  });
+    const snapshot = await loadCurrentAffairsFromFirestore();
+    const sources = [...new Set(snapshot.articles.map((article) => article.source).filter(Boolean))];
+    const updatedAtMs = snapshot.updatedAt ? Date.parse(snapshot.updatedAt) : NaN;
+    const stale = !Number.isFinite(updatedAtMs) || Date.now() - updatedAtMs > 24 * 60 * 60 * 1000;
+    const state = snapshot.articles.length > 0 ? "ok" : "no_articles_yet";
+
+    res.status(200).json({
+      success: true,
+      state,
+      articles: snapshot.articles,
+      mcqs: snapshot.mcqs,
+      sources,
+      updatedAt: snapshot.updatedAt,
+      lastUpdated: snapshot.updatedAt,
+      stale,
+      ...(state === "no_articles_yet" ? { message: "No current affairs stored yet. Ingestion will run shortly." } : {}),
+    });
   } catch (error: any) {
-  console.error("[v0] daily-current-affairs read failed:", error?.message || error);
-  res.status(200).json({
-    success: true,
-    state: "unavailable",
-    articles: [],
-    mcqs: [],
-    sources: [],
-    updatedAt: null,
-    lastUpdated: null,
-    stale: true,
-    message: "The current affairs service is temporarily unavailable. Please try again in a moment.",
-  });
+    console.error("[CURRENT-AFFAIRS] daily-current-affairs read failed:", error?.message || error);
+    res.status(500).json({
+      success: false,
+      state: "backend_failure",
+      error: error?.message || "Failed to retrieve current affairs.",
+      message: "The current affairs service is temporarily unavailable. Please try again in a moment.",
+      articles: [],
+      sources: [],
+      updatedAt: null,
+      lastUpdated: null,
+      stale: true,
+    });
   }
 });
 
-  app.get("/api/news/sync", async (req, res) => {
+app.get("/api/news/sync", async (req, res) => {
   const expectedSecret = process.env.CRON_SECRET;
   const authorization = req.get("authorization");
-  if (!expectedSecret || authorization !== `Bearer ${expectedSecret}`) {
-  return res.status(401).json({ success: false, error: "Unauthorized cron request." });
+  const querySecret = req.query.secret || req.query.cron_secret;
+  const xCronSecret = req.get("x-cron-secret");
+
+  const providedSecret =
+    (authorization && authorization.startsWith("Bearer ") ? authorization.slice(7) : null) ||
+    (typeof querySecret === "string" ? querySecret : null) ||
+    (typeof xCronSecret === "string" ? xCronSecret : null);
+
+  // If CRON_SECRET is configured, enforce strict verification
+  if (expectedSecret) {
+    if (providedSecret !== expectedSecret) {
+      const user = verifyToken(authorization || "");
+      if (!user?.isAdmin) {
+        return res.status(401).json({
+          success: false,
+          state: "auth_failure",
+          error: "Unauthorized cron request: CRON_SECRET mismatch.",
+        });
+      }
+    }
+  } else {
+    // If CRON_SECRET is not configured in environment:
+    // Allow in non-production, or if an authenticated admin user triggers it
+    if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
+      const user = verifyToken(authorization || "");
+      if (!user?.isAdmin) {
+        return res.status(401).json({
+          success: false,
+          state: "auth_failure",
+          error: "Unauthorized: CRON_SECRET environment variable is not configured.",
+        });
+      }
+    } else {
+      console.warn("[CRON] Executing news sync without CRON_SECRET configured (development / preview mode).");
+    }
   }
+
   try {
-  const pipelineResult = await executeNewsIngestionPipeline();
-  return res.status(200).json({
-  success: true,
-  newlyIngested: pipelineResult.newlyIngested,
-  totalArticles: pipelineResult.articles.length,
-  successfulSources: pipelineResult.successfulSources,
-  failedSources: pipelineResult.failedSources,
-  sourceHealth: pipelineResult.sourceHealth,
-  sources: pipelineResult.sources,
-  cacheRetained: pipelineResult.cacheRetained,
-  cacheWritten: pipelineResult.cacheWritten,
-  updatedAt: pipelineResult.updatedAt,
-  timestamp: pipelineResult.updatedAt,
-  });
+    const pipelineResult = await executeNewsIngestionPipeline();
+
+    // Comprehensive logging per requirement 12:
+    // source, URL, HTTP status, failure reason, number of articles, sync timestamp
+    for (const h of pipelineResult.sourceHealth) {
+      console.log(
+        `[SYNC-LOG] source="${h.source}" url="${h.url}" httpStatus=${h.httpStatus ?? (h.status === "ok" ? 200 : "null")} status="${h.status}" articles=${h.articleCount} failureReason="${h.error || "none"}" syncTimestamp="${pipelineResult.updatedAt}"`
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      state: "ok",
+      newlyIngested: pipelineResult.newlyIngested,
+      totalArticles: pipelineResult.articles.length,
+      successfulSources: pipelineResult.successfulSources,
+      failedSources: pipelineResult.failedSources,
+      sourceHealth: pipelineResult.sourceHealth,
+      sources: pipelineResult.sources,
+      cacheRetained: pipelineResult.cacheRetained,
+      cacheWritten: pipelineResult.cacheWritten,
+      updatedAt: pipelineResult.updatedAt,
+      timestamp: pipelineResult.updatedAt,
+    });
   } catch (error: any) {
-  // Even a catastrophic failure must not overwrite the cache; report 200 so
-  // the Vercel cron does not treat a transient upstream outage as a hard failure.
-  console.error("[v0] news sync failed:", error?.message || error);
-  return res.status(200).json({
-  success: false,
-  error: "News synchronization encountered an error; existing cache preserved.",
-  cacheRetained: true,
-  cacheWritten: false,
-  });
+    console.error("[CRON] news sync failed:", error?.message || error);
+    return res.status(500).json({
+      success: false,
+      state: "backend_failure",
+      error: error?.message || "News synchronization encountered an error.",
+      cacheRetained: true,
+      cacheWritten: false,
+      timestamp: new Date().toISOString(),
+    });
   }
-  });
+});
 
   app.get("/api/news/feed-health", async (req, res) => {
   const expectedSecret = process.env.CRON_SECRET;
@@ -2261,22 +2305,28 @@ jobQueue.registerWorker("embeddings_generation", async (job) => {
 // ----------------------------------------------------
 // UPSC PYQ INTELLIGENCE ENDPOINTS
 // ----------------------------------------------------
-app.get("/api/pyqs/search", requireAuth, (req, res) => {
+app.get("/api/pyqs/search", authenticateToken, (req, res) => {
   try {
     const stage = req.query.stage as any;
     const paper = req.query.paper as any;
+    const tier = req.query.tier as any;
     const yearStart = req.query.yearStart ? parseInt(req.query.yearStart as string, 10) : undefined;
     const yearEnd = req.query.yearEnd ? parseInt(req.query.yearEnd as string, 10) : undefined;
     const topic = req.query.topic as string;
+    const subtopic = req.query.subtopic as string;
+    const subject = req.query.subject as string;
     const recurringThemeId = req.query.recurringThemeId as string;
     const searchQuery = (req.query.q as string) || (req.query.query as string) || (req.query.search as string);
 
     const results = searchUpscPyqs({
       stage,
       paper,
+      tier,
       yearStart,
       yearEnd,
       topic,
+      subtopic,
+      subject,
       recurringThemeId,
       searchQuery,
     });
@@ -2291,7 +2341,7 @@ app.get("/api/pyqs/search", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/pyqs/analysis", requireAuth, (_req, res) => {
+app.get("/api/pyqs/analysis", authenticateToken, (_req, res) => {
   try {
     const recurringThemes = getRecurringThemeAnalytics();
     res.json({
@@ -2304,7 +2354,7 @@ app.get("/api/pyqs/analysis", requireAuth, (_req, res) => {
   }
 });
 
-app.get("/api/pyqs/topic/:topicName", requireAuth, (req, res) => {
+app.get("/api/pyqs/topic/:topicName", authenticateToken, (req, res) => {
   try {
     const topicName = decodeURIComponent(req.params.topicName);
     const intel = getTopicPyqIntelligence(topicName);
@@ -2318,7 +2368,7 @@ app.get("/api/pyqs/topic/:topicName", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/pyqs/:id", requireAuth, (req, res) => {
+app.get("/api/pyqs/:id", authenticateToken, (req, res) => {
   try {
     const pyq = getPyqById(req.params.id);
     if (!pyq) {
@@ -2586,6 +2636,13 @@ app.post("/api/ai/stream", requireAuth, aiRateLimiter, async (req, res) => {
 export { app };
 export default app;
 
-if (!process.env.VERCEL) {
+const isDirectExecution =
+  typeof process !== "undefined" &&
+  process.argv[1] &&
+  (process.argv[1].endsWith("server.ts") ||
+    process.argv[1].endsWith("server.cjs") ||
+    process.argv[1].endsWith("server.js"));
+
+if (!process.env.VERCEL && isDirectExecution) {
   startServer();
 }
