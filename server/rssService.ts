@@ -33,88 +33,88 @@ export const POPULAR_UPSC_FEEDS: RssFeedPreset[] = [
     name: "The Hindu - National News",
     source: "The Hindu",
     url: "https://www.thehindu.com/news/national/feeder/default.rss",
-    category: "National Affairs",
+    category: "National Affairs (GS 2)",
     description: "Policy announcements, Supreme Court judgments, and parliamentary debates.",
+  },
+  {
+    id: "hindu-international",
+    name: "The Hindu - International Relations",
+    source: "The Hindu",
+    url: "https://www.thehindu.com/news/international/feeder/default.rss",
+    category: "International Relations (GS 2)",
+    description: "Global diplomacy, bilateral summits, and multilateral treaties.",
+  },
+  {
+    id: "hindu-science",
+    name: "The Hindu - Science & Technology",
+    source: "The Hindu",
+    url: "https://www.thehindu.com/sci-tech/science/feeder/default.rss",
+    category: "Science & Tech (GS 3)",
+    description: "Space missions, biotechnology, AI governance, and scientific breakthroughs.",
+  },
+  {
+    id: "hindu-environment",
+    name: "The Hindu - Energy & Environment",
+    source: "The Hindu",
+    url: "https://www.thehindu.com/sci-tech/energy-and-environment/feeder/default.rss",
+    category: "Environment & Ecology (GS 3)",
+    description: "Climate policy, renewable energy transition, and wildlife conservation.",
+  },
+  {
+    id: "hindu-business",
+    name: "The Hindu - Economy & Business",
+    source: "The Hindu",
+    url: "https://www.thehindu.com/business/feeder/default.rss",
+    category: "Economy & Industry (GS 3)",
+    description: "Macroeconomic updates, fiscal indicators, and trade developments.",
   },
   {
     id: "pib-releases",
     name: "PIB - Government Press Releases",
     source: "PIB",
-    url: "https://news.google.com/rss/search?q=site%3Apib.gov.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://pib.gov.in/RssMain.aspx?ModId=6",
     category: "Government Schemes & Policy",
     description: "Authentic notifications from Union Ministries, Cabinet decisions & PM speeches.",
   },
   {
-    id: "ie-explained",
-    name: "The Indian Express - Explained",
+    id: "livemint-politics",
+    name: "LiveMint - Governance & Polity",
     source: "The Indian Express",
-    url: "https://news.google.com/rss/search?q=site%3Aindianexpress.com+explained&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "In-depth Analysis",
-    description: "Deep dive into constitutional amendments, macroeconomic trends, and science.",
+    url: "https://www.livemint.com/rss/politics",
+    category: "Governance & Polity (GS 2)",
+    description: "In-depth investigative coverage of constitutional institutions and policy agendas.",
   },
   {
-    id: "ie-editorials",
-    name: "The Indian Express - Editorials",
-    source: "The Indian Express",
-    url: "https://news.google.com/rss/search?q=site%3Aindianexpress.com+editorial&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Opinion & Critique",
-    description: "Expert commentary on domestic politics, judicial appointments, and foreign policy.",
-  },
-  {
-    id: "dte-environment",
-    name: "Down To Earth - Environment & Climate",
-    source: "Down To Earth",
-    url: "https://news.google.com/rss/search?q=site%3Adowntoearth.org.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Environment & Ecology (GS 3)",
-    description: "In-depth investigative reports on climate change, biodiversity, and wildlife conservation.",
-  },
-  {
-    id: "livelaw-sc",
-    name: "LiveLaw - Supreme Court & Constitutional Law",
-    source: "LiveLaw",
-    url: "https://news.google.com/rss/search?q=site%3Alivelaw.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Polity & Judiciary (GS 2)",
-    description: "Authoritative jurisprudence, constitutional bench verdicts, and judicial reviews.",
-  },
-  {
-    id: "prs-policy",
-    name: "PRS Legislative Research - Bills & Acts",
-    source: "PRS Legislative",
-    url: "https://news.google.com/rss/search?q=site%3Aprsindia.org&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Parliament & Legislation (GS 2)",
-    description: "Objective analysis of parliamentary bills, committee reports, and policy agendas.",
+    id: "livemint-economy",
+    name: "LiveMint - Economy & Macro Policy",
+    source: "Business Standard",
+    url: "https://www.livemint.com/rss/economy",
+    category: "Macroeconomics (GS 3)",
+    description: "Macroeconomic indicators, fiscal deficits, and structural reforms.",
   },
   {
     id: "bs-economy",
     name: "Business Standard - Economy & Fiscal Policy",
     source: "Business Standard",
-    url: "https://news.google.com/rss/search?q=site%3Abusiness-standard.com+economy&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.business-standard.com/rss/economy-policy-102.rss",
     category: "Macroeconomics & Trade (GS 3)",
     description: "Critical fiscal deficits, monetary transmission, manufacturing, and global trade metrics.",
   },
   {
-    id: "orf-strategy",
-    name: "Observer Research Foundation - Strategic Affairs",
-    source: "ORF",
-    url: "https://news.google.com/rss/search?q=site%3Aorfonline.org&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "International Relations (GS 2)",
-    description: "Geopolitical alignments, Indo-Pacific dynamics, multilateral diplomacy, and defense.",
+    id: "moneycontrol-economy",
+    name: "Moneycontrol - Economic Trajectories & Trade",
+    source: "Government Sources",
+    url: "https://www.moneycontrol.com/rss/economy.xml",
+    category: "Economy & Trade (GS 3)",
+    description: "Monetary policy committee updates, banking sector reforms, and inflation metrics.",
   },
   {
-    id: "et-economy",
-    name: "Economic Times - Economy & Policy",
+    id: "toi-governance",
+    name: "Times of India - Governance & Law",
     source: "Government Sources",
-    url: "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",
-    category: "Economy & Governance",
-    description: "Macroeconomic data, fiscal reforms, RBI circulars, and trade policy updates.",
-  },
-  {
-    id: "livemint-policy",
-    name: "Livemint - Politics & Governance",
-    source: "Government Sources",
-    url: "https://www.livemint.com/rss/politics",
-    category: "Governance & Polity",
-    description: "Executive orders, state legislative actions, and public administration reviews.",
+    url: "https://timesofindia.indiatimes.com/rssfeeds/296589292.cms",
+    category: "National Affairs (GS 2)",
+    description: "Parliamentary proceedings, statutory developments, and public administration.",
   },
 ];
 
@@ -634,7 +634,8 @@ export async function fetchAndParseRssFeed(
   } catch (publisherError: any) {
     lastError = publisherError instanceof RssFetchError ? publisherError : new RssFetchError("network", String(publisherError?.message || publisherError));
     httpStatus = lastError.httpStatus ?? null;
-    console.info(`[RSS] Primary feed attempt for ${source} (${lastError.kind}); checking Google News fallback...`);
+    const statusLabel = httpStatus ? `HTTP ${httpStatus}` : lastError.kind;
+    console.log(`[RSS] Primary feed attempt for ${source} (${statusLabel}); checking fallback...`);
   }
 
   const fallbackUrl = googleNewsUrlFor(source);
@@ -657,11 +658,12 @@ export async function fetchAndParseRssFeed(
     } catch (fallbackError: any) {
       lastError = fallbackError instanceof RssFetchError ? fallbackError : new RssFetchError("network", String(fallbackError?.message || fallbackError));
       if (lastError.httpStatus) httpStatus = lastError.httpStatus;
-      console.info(`[RSS] Fallback feed attempt for ${source} (${lastError.kind})`);
+      const fbStatusLabel = httpStatus ? `HTTP ${httpStatus}` : lastError.kind;
+      console.log(`[RSS] Fallback feed attempt for ${source} (${fbStatusLabel})`);
     }
   }
 
-  console.info(`[RSS] Source unavailable: ${source} — [${lastError?.kind || "unknown"}]`);
+  console.log(`[RSS] Source unavailable: ${source} (status: ${httpStatus || "unavailable"})`);
   return {
     success: false,
     articles: [],
