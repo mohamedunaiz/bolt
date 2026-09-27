@@ -14,6 +14,76 @@ export type NavigationTab =
   | "pyqs"
   | "settings";
 
+export interface UpscPyqItem {
+  id: string;
+  year: number;
+  stage: "Prelims" | "Mains";
+  paper: "GS 1" | "GS 2" | "GS 3" | "GS 4" | "PubAdmin Paper 1" | "PubAdmin Paper 2";
+  unit: string;
+  topic: string;
+  subtopic: string;
+  questionType: "MCQ" | "10-Marker" | "15-Marker" | "20-Marker" | "Case Study";
+  marks: number;
+  questionText: string;
+  verification: {
+    tier: "VERIFIED_OFFICIAL_PYQ" | "VERIFIED_RELIABLE_ARCHIVE" | "PRACTICE_QUESTION";
+    verified: boolean;
+    source: string;
+    sourceUrl: string | null;
+    note: string;
+    officialAnswerVerified?: boolean;
+  };
+  syllabusMapping: {
+    paper: string;
+    subject: string;
+    topic: string;
+    subtopic: string;
+  };
+  commandWord?: string;
+  wordLimit?: number;
+  demandAnalysis?: {
+    coreDemand: string;
+    dimensions: string[];
+    commandWordGuide: string;
+    relevantConstitutionalArticles?: string[];
+    relevantCommittees?: string[];
+    relevantThinkers?: string[];
+    staticCurrentLinkage?: string;
+  };
+  recurringThemeId?: string;
+  recurringThemeLabel?: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  relatedThinkers?: string[];
+  constitutionalArticles?: string[];
+  secondArcReports?: string[];
+  options?: { key: string; text: string }[];
+  correctOption?: string;
+  explanation?: string;
+  optionAnalysis?: { optionKey: string; analysis: string; isCorrect: boolean }[];
+  modelAnswerFramework?: {
+    introduction: string;
+    bodyPoints: string[];
+    thinkersToAnchor: string[];
+    wayForward: string;
+  };
+  linkedCurrentAffairsTags?: string[];
+  practiceDrillPrompt?: string;
+}
+
+export interface RecurringThemeAnalysis {
+  themeId: string;
+  title: string;
+  paper: string;
+  unit: string;
+  frequencyCount: number;
+  yearsAsked: number[];
+  repetitionPattern: string;
+  trend: "Rising in frequency" | "Consistently recurring" | "Periodic cycle";
+  importanceScore: number;
+  samplePyqs: { id: string; year: number; question: string; source: string }[];
+  keyDemandAdvice: string;
+}
+
 export interface HistoricalPyq {
   id: string;
   year: number;

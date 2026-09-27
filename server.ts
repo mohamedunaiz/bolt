@@ -1456,7 +1456,26 @@ app.post("/api/news/pipeline/mcqs", requireAuth, aiRateLimiter, (req, res) => {
 app.get("/api/news/daily-current-affairs", authenticateToken, async (_req, res) => {
   res.set("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
   try {
-    const snapshot = await loadCurrentAffairsFromFirestore();
+    let snapshot = await loadCurrentAffairsFromFirestore();
+
+    // If Firestore has no articles yet (e.g. cold start, first run, or unpopulated cache),
+    // automatically trigger the ingestion pipeline so the user immediately receives real articles.
+    if (!snapshot.articles || snapshot.articles.length === 0) {
+      console.log("[CURRENT-AFFAIRS] Firestore current_affairs/latest is empty. Triggering automated ingestion...");
+      try {
+        const ingestionResult = await executeNewsIngestionPipeline();
+        if (ingestionResult.articles && ingestionResult.articles.length > 0) {
+          snapshot = {
+            articles: ingestionResult.articles,
+            mcqs: snapshot.mcqs && snapshot.mcqs.length > 0 ? snapshot.mcqs : [],
+            updatedAt: ingestionResult.updatedAt,
+          };
+        }
+      } catch (ingestErr: any) {
+        console.warn("[CURRENT-AFFAIRS] Automated ingestion attempt notice:", ingestErr?.message);
+      }
+    }
+
     const sources = [...new Set(snapshot.articles.map((article) => article.source).filter(Boolean))];
     const updatedAtMs = snapshot.updatedAt ? Date.parse(snapshot.updatedAt) : NaN;
     const stale = !Number.isFinite(updatedAtMs) || Date.now() - updatedAtMs > 24 * 60 * 60 * 1000;

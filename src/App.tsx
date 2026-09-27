@@ -521,7 +521,13 @@ export default function App() {
         )}
 
         {activeTab === "pyqs" && (
-          <HistoricalPyqView onAskBoltQuestion={handleAskBolt} />
+          <HistoricalPyqView
+            onAskBoltQuestion={handleAskBolt}
+            onEvaluateAnswer={(questionText, answerText) => {
+              setActiveTab("mains");
+              handleAskBolt(`Please evaluate my answer for this official UPSC Mains question using the 7-dimension rubric:\n\nQuestion:\n${questionText}\n\nMy Written Answer:\n${answerText}`);
+            }}
+          />
         )}
 
         {activeTab === "mains" && (

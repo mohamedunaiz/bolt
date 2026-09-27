@@ -78,27 +78,57 @@ export async function loadCurrentAffairsFromFirestore(): Promise<{
   mcqs: PrelimsQuestion[];
   updatedAt: string | null;
 }> {
+  // 1. Try Firebase Admin SDK
   try {
-    console.log("[CURRENT-AFFAIRS] reading Firestore current_affairs/latest");
     const app = initFirebaseAdmin();
-    if (!app) throw new Error("Firebase Admin is not initialized.");
-    const snapshot = await getFirestore(app)
-      .collection(CURRENT_AFFAIRS_COLLECTION)
-      .doc(CURRENT_AFFAIRS_DOCUMENT)
-      .get();
-    const data = snapshot.data();
-    if (data && Array.isArray(data.articles)) {
-      cachedArticles = data.articles as NewsArticle[];
-      cachedMcqs = Array.isArray(data.mcqs) ? data.mcqs as PrelimsQuestion[] : [];
-      return { articles: cachedArticles, mcqs: cachedMcqs, updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null };
+    if (app) {
+      const snapshot = await getFirestore(app)
+        .collection(CURRENT_AFFAIRS_COLLECTION)
+        .doc(CURRENT_AFFAIRS_DOCUMENT)
+        .get();
+      const data = snapshot.data();
+      if (data && Array.isArray(data.articles)) {
+        cachedArticles = data.articles as NewsArticle[];
+        cachedMcqs = Array.isArray(data.mcqs) ? (data.mcqs as PrelimsQuestion[]) : [];
+        return {
+          articles: cachedArticles,
+          mcqs: cachedMcqs,
+          updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
+        };
+      }
     }
-    console.log("[CURRENT-AFFAIRS] Firestore document is empty or missing");
-    return { articles: [], mcqs: [], updatedAt: null };
-  } catch (error: any) {
-    console.warn("[CURRENT-AFFAIRS] Firestore read unavailable, falling back to local store:", error?.message || error);
-    loadCurrentAffairsFromDisk();
-    return { articles: cachedArticles, mcqs: cachedMcqs, updatedAt: null };
+  } catch (adminError: any) {
+    // Admin SDK ADC may lack credentials in certain container environments; proceed to Client SDK
   }
+
+  // 2. Try Firebase Client SDK (authorized via firestore.rules public read: if true)
+  try {
+    const { db } = await import("../src/lib/firebase");
+    const { doc, getDoc } = await import("firebase/firestore");
+    const docRef = doc(db, CURRENT_AFFAIRS_COLLECTION, CURRENT_AFFAIRS_DOCUMENT);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data && Array.isArray(data.articles)) {
+        cachedArticles = data.articles as NewsArticle[];
+        cachedMcqs = Array.isArray(data.mcqs) ? (data.mcqs as PrelimsQuestion[]) : [];
+        return {
+          articles: cachedArticles,
+          mcqs: cachedMcqs,
+          updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
+        };
+      }
+    }
+  } catch (clientError: any) {
+    // Client SDK read is non-blocking fallback
+  }
+
+  // 3. In non-serverless local/desktop environments, load from local disk if available
+  if (!process.env.VERCEL) {
+    loadCurrentAffairsFromDisk();
+  }
+
+  return { articles: cachedArticles, mcqs: cachedMcqs, updatedAt: null };
 }
 
 export async function saveCurrentAffairsToFirestore(
@@ -107,7 +137,11 @@ export async function saveCurrentAffairsToFirestore(
 ): Promise<void> {
   cachedArticles = articles;
   if (mcqs) cachedMcqs = mcqs;
-  saveCurrentAffairsToDisk(cachedArticles, cachedMcqs);
+
+  if (!process.env.VERCEL) {
+    saveCurrentAffairsToDisk(cachedArticles, cachedMcqs);
+  }
+
   try {
     const app = initFirebaseAdmin();
     if (!app) return;
@@ -115,13 +149,17 @@ export async function saveCurrentAffairsToFirestore(
     await getFirestore(app)
       .collection(CURRENT_AFFAIRS_COLLECTION)
       .doc(CURRENT_AFFAIRS_DOCUMENT)
-      .set({
-        articles: cachedArticles,
-        mcqs: cachedMcqs,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      .set(
+        {
+          articles: cachedArticles,
+          mcqs: cachedMcqs,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    console.log("[CURRENT-AFFAIRS] Successfully saved to Firestore current_affairs/latest");
   } catch (error: any) {
-    console.warn("[CURRENT-AFFAIRS] Firestore write skipped/unavailable:", error?.message || error);
+    console.warn("[CURRENT-AFFAIRS] Firestore write notice:", error?.message || error);
   }
 }
 
