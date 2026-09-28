@@ -37,18 +37,26 @@ export const POPULAR_UPSC_FEEDS: RssFeedPreset[] = [
     description: "Policy announcements, Supreme Court judgments, and parliamentary debates.",
   },
   {
+    id: "ie-national",
+    name: "The Indian Express - National News",
+    source: "The Indian Express",
+    url: "https://www.bing.com/news/search?q=site%3Aindianexpress.com&format=rss",
+    category: "National & Governance (GS 2)",
+    description: "Union governance, policy agendas, parliamentary debates, and state administration.",
+  },
+  {
     id: "ie-explained",
     name: "The Indian Express - Explained",
     source: "The Indian Express",
-    url: "https://news.google.com/rss/search?q=site%3Aindianexpress.com+explained&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Governance & Polity (GS 2)",
-    description: "In-depth investigative coverage of constitutional institutions and policy agendas.",
+    url: "https://www.bing.com/news/search?q=site%3Aindianexpress.com+explained&format=rss",
+    category: "Governance & Polity (GS 2/3)",
+    description: "In-depth investigative coverage of constitutional institutions, economics, and policy agendas.",
   },
   {
     id: "ie-editorial",
     name: "The Indian Express - Opinion & Editorials",
     source: "The Indian Express",
-    url: "https://news.google.com/rss/search?q=site%3Aindianexpress.com+opinion+OR+editorial&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=site%3Aindianexpress.com+opinion+OR+editorial&format=rss",
     category: "Editorials & Analysis",
     description: "Expert op-eds on state policy, international relations, and socio-economic dynamics.",
   },
@@ -59,14 +67,6 @@ export const POPULAR_UPSC_FEEDS: RssFeedPreset[] = [
     url: "https://pib.gov.in/RssMain.aspx?ModId=6",
     category: "Government Schemes & Policy",
     description: "Authentic notifications from Union Ministries, Cabinet decisions & PM speeches.",
-  },
-  {
-    id: "pib-cabinet",
-    name: "PIB - Cabinet & Ministry Policy",
-    source: "PIB",
-    url: "https://news.google.com/rss/search?q=site%3Apib.gov.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Union Ministries & Policy (GS 2/3)",
-    description: "Official notifications, scheme guidelines, and union government gazette briefs.",
   },
   {
     id: "livemint-economy",
@@ -80,9 +80,25 @@ export const POPULAR_UPSC_FEEDS: RssFeedPreset[] = [
     id: "livemint-politics",
     name: "Livemint - Politics & Governance",
     source: "Livemint",
-    url: "https://www.livemint.com/rss/politics",
+    url: "https://www.livemint.com/rss/news",
     category: "Governance & Polity (GS 2)",
     description: "Union and state administrative reforms, elections, and public sector policy.",
+  },
+  {
+    id: "et-economy",
+    name: "Economic Times - Economy & Fiscal Policy",
+    source: "Economic Times",
+    url: "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",
+    category: "Economy & Industry (GS 3)",
+    description: "Economic policymaking, fiscal indicators, inflation, and external sector metrics.",
+  },
+  {
+    id: "et-politics",
+    name: "Economic Times - Politics & Nation",
+    source: "Economic Times",
+    url: "https://economictimes.indiatimes.com/news/politics-and-nation/rssfeeds/1052732854.cms",
+    category: "Governance & Policy (GS 2)",
+    description: "Union ministries, executive policies, and constitutional governance developments.",
   },
   {
     id: "bs-economy",
@@ -93,10 +109,26 @@ export const POPULAR_UPSC_FEEDS: RssFeedPreset[] = [
     description: "Critical fiscal deficits, monetary transmission, manufacturing, and global trade metrics.",
   },
   {
+    id: "ht-national",
+    name: "Hindustan Times - National & Social Justice",
+    source: "Hindustan Times",
+    url: "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",
+    category: "National Governance & Social Justice (GS 2)",
+    description: "Constitutional governance, Supreme Court developments, and administrative policy.",
+  },
+  {
+    id: "toi-national",
+    name: "Times of India - National Governance",
+    source: "Times of India",
+    url: "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms",
+    category: "National Affairs (GS 2)",
+    description: "Union administrative policies, supreme court verdicts, and parliamentary discourse.",
+  },
+  {
     id: "dte-environment",
     name: "Down To Earth - Environment & Wildlife",
     source: "Down To Earth",
-    url: "https://news.google.com/rss/search?q=site%3Adowntoearth.org.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=site%3Adowntoearth.org.in&format=rss",
     category: "Environment & Ecology (GS 3)",
     description: "Environmental governance, ecology, climate change, and conservation metrics.",
   },
@@ -104,49 +136,9 @@ export const POPULAR_UPSC_FEEDS: RssFeedPreset[] = [
     id: "livelaw-judiciary",
     name: "LiveLaw - Supreme Court & Legal Judgments",
     source: "LiveLaw",
-    url: "https://news.google.com/rss/search?q=site%3Alivelaw.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=site%3Alivelaw.in&format=rss",
     category: "Judiciary & Law (GS 2)",
     description: "Supreme Court judgments, constitutional benchmarks, and public interest litigation.",
-  },
-  {
-    id: "prs-legislative",
-    name: "PRS Legislative Research - Parliament & Bills",
-    source: "PRS Legislative",
-    url: "https://news.google.com/rss/search?q=site%3Aprsindia.org&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Parliament & Legislation (GS 2)",
-    description: "Tracking Parliamentary bills, committee reports, and legislative research.",
-  },
-  {
-    id: "et-economy",
-    name: "Economic Times - Economy & Governance",
-    source: "Economic Times",
-    url: "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",
-    category: "Economy & Industry (GS 3)",
-    description: "Economic policymaking, fiscal indicators, inflation, and external sector metrics.",
-  },
-  {
-    id: "orf-geopolitics",
-    name: "Observer Research Foundation (ORF) - Geopolitics",
-    source: "ORF",
-    url: "https://news.google.com/rss/search?q=site%3Aorfonline.org&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "International Relations & Security (GS 2/3)",
-    description: "Strategic affairs, global multilateral forums, and foreign policy research.",
-  },
-  {
-    id: "sansad-tv",
-    name: "Sansad TV - Parliamentary Debates & Policy",
-    source: "Sansad TV",
-    url: "https://news.google.com/rss/search?q=%22Sansad+TV%22+OR+%22Rajya+Sabha+TV%22&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Parliament & Public Policy (GS 2)",
-    description: "In-depth Parliamentary debates, Perspective analysis, and Union legislative discourse.",
-  },
-  {
-    id: "niti-aayog",
-    name: "NITI Aayog - National Strategy & Reports",
-    source: "NITI Aayog",
-    url: "https://news.google.com/rss/search?q=site%3Aniti.gov.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Economic Planning & Sustainable Development (GS 3)",
-    description: "Aspirational districts, state policy rankings, SDG progress, and government think tank reports.",
   },
   {
     id: "bbc-india",
@@ -157,36 +149,36 @@ export const POPULAR_UPSC_FEEDS: RssFeedPreset[] = [
     description: "International perspectives on Indian governance, diplomacy, science, and development.",
   },
   {
-    id: "ht-national",
-    name: "Hindustan Times - National & Governance",
-    source: "Hindustan Times",
-    url: "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",
-    category: "National Governance & Social Justice (GS 2)",
-    description: "Constitutional governance, supreme court developments, and union administrative policy.",
+    id: "prs-legislative",
+    name: "PRS Legislative Research - Parliament & Bills",
+    source: "PRS Legislative",
+    url: "https://www.bing.com/news/search?q=%22PRS+Legislative+Research%22+OR+site%3Aprsindia.org&format=rss",
+    category: "Parliament & Legislation (GS 2)",
+    description: "Tracking Parliamentary bills, committee reports, and legislative research.",
   },
   {
-    id: "yojana-kurukshetra",
-    name: "Yojana & Kurukshetra - Rural & Social Development",
-    source: "Yojana & Kurukshetra",
-    url: "https://news.google.com/rss/search?q=%22Yojana%22+OR+%22Kurukshetra%22+magazine+UPSC&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Rural Economy & Welfare (GS 2/3)",
-    description: "Monthly socio-economic developmental themes, grassroots schemes, and agriculture.",
+    id: "orf-geopolitics",
+    name: "Observer Research Foundation (ORF) - Geopolitics",
+    source: "ORF",
+    url: "https://www.bing.com/news/search?q=site%3Aorfonline.org&format=rss",
+    category: "International Relations & Security (GS 2/3)",
+    description: "Strategic affairs, global multilateral forums, and foreign policy research.",
   },
   {
-    id: "idsa-strategic",
-    name: "IDSA - Defence & National Security",
-    source: "IDSA",
-    url: "https://news.google.com/rss/search?q=site%3Aidsa.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Internal Security & Defence (GS 3)",
-    description: "Strategic affairs, border infrastructure, defence modernization, and multilateral security.",
+    id: "sansad-tv",
+    name: "Sansad TV - Parliamentary Debates & Policy",
+    source: "Sansad TV",
+    url: "https://www.bing.com/news/search?q=%22Sansad+TV%22+OR+%22Rajya+Sabha+TV%22&format=rss",
+    category: "Parliament & Public Policy (GS 2)",
+    description: "In-depth Parliamentary debates, Perspective analysis, and Union legislative discourse.",
   },
   {
-    id: "scroll-governance",
-    name: "Scroll.in - Governance & Social Issues",
-    source: "Scroll.in",
-    url: "https://scroll.in/feed",
-    category: "Society & Fundamental Rights (GS 1/2)",
-    description: "Grassroots governance, human rights, public welfare delivery, and environmental analysis.",
+    id: "niti-aayog",
+    name: "NITI Aayog - National Strategy & Reports",
+    source: "NITI Aayog",
+    url: "https://www.bing.com/news/search?q=site%3Aniti.gov.in&format=rss",
+    category: "Economic Planning & Sustainable Development (GS 3)",
+    description: "Aspirational districts, state policy rankings, SDG progress, and government think tank reports.",
   },
 ];
 
@@ -220,22 +212,33 @@ export function detectSourceFromUrl(url: string, explicitSource?: string): NewsA
     if (explicitSource.includes("PRS")) return "PRS Legislative";
     if (explicitSource.includes("Business Standard")) return "Business Standard";
     if (explicitSource.includes("Economic Times")) return "Economic Times";
+    if (explicitSource.includes("Times of India") || explicitSource.includes("TOI")) return "Times of India";
+    if (explicitSource.includes("Hindustan Times") || explicitSource.includes("HT")) return "Hindustan Times";
+    if (explicitSource.includes("BBC")) return "BBC News";
     if (explicitSource.includes("ORF")) return "ORF";
+    if (explicitSource.includes("Sansad")) return "Sansad TV";
+    if (explicitSource.includes("NITI")) return "NITI Aayog";
+    if (explicitSource.includes("Yojana") || explicitSource.includes("Kurukshetra")) return "Yojana & Kurukshetra";
     if (explicitSource.includes("Editorial")) return "Editorials";
     return "Government Sources";
   }
 
   const lowUrl = url.toLowerCase();
+  if (lowUrl.includes("thehindu.com")) return "The Hindu";
+  if (lowUrl.includes("indianexpress.com")) return "The Indian Express";
+  if (lowUrl.includes("pib.gov.in")) return "PIB";
+  if (lowUrl.includes("livemint.com")) return "Livemint";
+  if (lowUrl.includes("economictimes.indiatimes.com")) return "Economic Times";
+  if (lowUrl.includes("timesofindia.indiatimes.com") || lowUrl.includes("timesofindia")) return "Times of India";
+  if (lowUrl.includes("hindustantimes.com")) return "Hindustan Times";
+  if (lowUrl.includes("business-standard.com")) return "Business Standard";
   if (lowUrl.includes("downtoearth.org.in")) return "Down To Earth";
   if (lowUrl.includes("livelaw.in")) return "LiveLaw";
   if (lowUrl.includes("prsindia.org")) return "PRS Legislative";
-  if (lowUrl.includes("business-standard.com")) return "Business Standard";
+  if (lowUrl.includes("bbc.co.uk") || lowUrl.includes("bbc.com")) return "BBC News";
   if (lowUrl.includes("orfonline.org")) return "ORF";
-  if (lowUrl.includes("economictimes.indiatimes.com")) return "Economic Times";
-  if (lowUrl.includes("livemint.com")) return "Livemint";
-  if (lowUrl.includes("thehindu.com")) return "The Hindu";
-  if (lowUrl.includes("pib.gov.in")) return "PIB";
-  if (lowUrl.includes("indianexpress.com")) return "The Indian Express";
+  if (lowUrl.includes("sansadtv.nic.in") || lowUrl.includes("sansad")) return "Sansad TV";
+  if (lowUrl.includes("niti.gov.in")) return "NITI Aayog";
   if (lowUrl.includes("editorial") || lowUrl.includes("opinion")) return "Editorials";
   return "Government Sources";
 }
@@ -453,7 +456,7 @@ const RSS_HEADERS = {
 
 const MAX_FEED_BYTES = 5 * 1024 * 1024; // 5 MB response protection limit
 
-const GOOGLE_NEWS_DOMAINS: Partial<Record<NewsArticle["source"], string>> = {
+const SEARCH_NEWS_DOMAINS: Partial<Record<NewsArticle["source"], string>> = {
   "The Hindu": "thehindu.com",
   "The Indian Express": "indianexpress.com",
   PIB: "pib.gov.in",
@@ -463,13 +466,18 @@ const GOOGLE_NEWS_DOMAINS: Partial<Record<NewsArticle["source"], string>> = {
   LiveLaw: "livelaw.in",
   "PRS Legislative": "prsindia.org",
   "Economic Times": "economictimes.indiatimes.com",
+  "Times of India": "timesofindia.indiatimes.com",
+  "Hindustan Times": "hindustantimes.com",
+  "BBC News": "bbc.com",
   ORF: "orfonline.org",
+  "Sansad TV": "sansadtv.nic.in",
+  "NITI Aayog": "niti.gov.in",
   "Government Sources": "pib.gov.in",
   Editorials: "thehindu.com",
 };
 
 export function googleNewsUrlFor(source: NewsArticle["source"], originalUrl?: string): string | null {
-  const domain = GOOGLE_NEWS_DOMAINS[source];
+  const domain = SEARCH_NEWS_DOMAINS[source];
   if (!domain) return null;
 
   let topicModifier = "";
@@ -481,7 +489,8 @@ export function googleNewsUrlFor(source: NewsArticle["source"], originalUrl?: st
     else if (low.includes("politics") || low.includes("governance")) topicModifier = "+governance";
   }
 
-  return `https://news.google.com/rss/search?q=site%3A${domain}${topicModifier}&hl=en-IN&gl=IN&ceid=IN%3Aen`;
+  // Use Bing News RSS as primary resilient fallback since Google News rate-limits / 503s server environments
+  return `https://www.bing.com/news/search?q=site%3A${domain}${topicModifier}&format=rss`;
 }
 
 function textValue(value: unknown): string {

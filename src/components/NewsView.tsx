@@ -51,6 +51,11 @@ interface SavedFeed {
     | "LiveLaw"
     | "PRS Legislative"
     | "Economic Times"
+    | "Times of India"
+    | "Hindustan Times"
+    | "BBC News"
+    | "Sansad TV"
+    | "NITI Aayog"
     | "ORF"
     | "Government Sources"
     | "Editorials";
@@ -76,17 +81,24 @@ const DEFAULT_PRESET_FEEDS: SavedFeed[] = [
     category: "National (GS 2)",
   },
   {
+    id: "preset-ie-nat",
+    name: "The Indian Express - National & Governance",
+    source: "The Indian Express",
+    url: "https://www.bing.com/news/search?q=site%3Aindianexpress.com&format=rss",
+    category: "National (GS 2)",
+  },
+  {
     id: "preset-ie-exp",
     name: "The Indian Express - Explained",
     source: "The Indian Express",
-    url: "https://news.google.com/rss/search?q=site%3Aindianexpress.com+explained&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=site%3Aindianexpress.com+explained&format=rss",
     category: "In-depth Analysis (GS 2/3)",
   },
   {
     id: "preset-ie-ed",
     name: "The Indian Express - Opinion & Editorials",
     source: "The Indian Express",
-    url: "https://news.google.com/rss/search?q=site%3Aindianexpress.com+opinion+OR+editorial&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=site%3Aindianexpress.com+opinion+OR+editorial&format=rss",
     category: "Editorials & Opinions",
   },
   {
@@ -95,13 +107,6 @@ const DEFAULT_PRESET_FEEDS: SavedFeed[] = [
     source: "PIB",
     url: "https://pib.gov.in/RssMain.aspx?ModId=6",
     category: "Union Government Notifications",
-  },
-  {
-    id: "preset-pib-cabinet",
-    name: "PIB - Cabinet Decisions & Schemes",
-    source: "PIB",
-    url: "https://news.google.com/rss/search?q=site%3Apib.gov.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Government Schemes & Policy",
   },
   {
     id: "preset-livemint-econ",
@@ -114,8 +119,22 @@ const DEFAULT_PRESET_FEEDS: SavedFeed[] = [
     id: "preset-livemint-pol",
     name: "Livemint - Politics & Governance",
     source: "Livemint",
-    url: "https://www.livemint.com/rss/politics",
+    url: "https://www.livemint.com/rss/news",
     category: "Governance & Polity (GS 2)",
+  },
+  {
+    id: "preset-et-econ",
+    name: "Economic Times - Economy & Fiscal Policy",
+    source: "Economic Times",
+    url: "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",
+    category: "Economy & Industry (GS 3)",
+  },
+  {
+    id: "preset-et-pol",
+    name: "Economic Times - Politics & Nation",
+    source: "Economic Times",
+    url: "https://economictimes.indiatimes.com/news/politics-and-nation/rssfeeds/1052732854.cms",
+    category: "Governance & Policy (GS 2)",
   },
   {
     id: "preset-bs",
@@ -125,39 +144,67 @@ const DEFAULT_PRESET_FEEDS: SavedFeed[] = [
     category: "Indian Economy & Industry (GS 3)",
   },
   {
+    id: "preset-ht",
+    name: "Hindustan Times - National & Governance",
+    source: "Hindustan Times",
+    url: "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",
+    category: "National (GS 2)",
+  },
+  {
+    id: "preset-toi",
+    name: "Times of India - India News & Policy",
+    source: "Times of India",
+    url: "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms",
+    category: "National (GS 2)",
+  },
+  {
     id: "preset-dte",
     name: "Down To Earth - Environment & Ecology",
     source: "Down To Earth",
-    url: "https://news.google.com/rss/search?q=site%3Adowntoearth.org.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=site%3Adowntoearth.org.in&format=rss",
     category: "Environment & Ecology (GS 3)",
   },
   {
     id: "preset-livelaw",
     name: "LiveLaw - Supreme Court & Legal Judgments",
     source: "LiveLaw",
-    url: "https://news.google.com/rss/search?q=site%3Alivelaw.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=site%3Alivelaw.in&format=rss",
     category: "Judiciary & Constitutional Law (GS 2)",
+  },
+  {
+    id: "preset-bbc",
+    name: "BBC News - South Asia & India Affairs",
+    source: "BBC News",
+    url: "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml",
+    category: "International Relations (GS 2)",
   },
   {
     id: "preset-prs",
     name: "PRS Legislative Research - Bills & Acts",
     source: "PRS Legislative",
-    url: "https://news.google.com/rss/search?q=site%3Aprsindia.org&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=%22PRS+Legislative+Research%22+OR+site%3Aprsindia.org&format=rss",
     category: "Parliament & Legislation (GS 2)",
-  },
-  {
-    id: "preset-et",
-    name: "Economic Times - Economy & Policy",
-    source: "Economic Times",
-    url: "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",
-    category: "Economy & Governance (GS 3)",
   },
   {
     id: "preset-orf",
     name: "Observer Research Foundation (ORF) - Geopolitics",
     source: "ORF",
-    url: "https://news.google.com/rss/search?q=site%3Aorfonline.org&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    url: "https://www.bing.com/news/search?q=site%3Aorfonline.org&format=rss",
     category: "International Relations & Security (GS 2/3)",
+  },
+  {
+    id: "preset-sansad",
+    name: "Sansad TV - Parliamentary Debates",
+    source: "Sansad TV",
+    url: "https://www.bing.com/news/search?q=%22Sansad+TV%22+OR+%22Rajya+Sabha+TV%22&format=rss",
+    category: "Parliament & Public Policy (GS 2)",
+  },
+  {
+    id: "preset-niti",
+    name: "NITI Aayog - National Strategy & Reports",
+    source: "NITI Aayog",
+    url: "https://www.bing.com/news/search?q=site%3Aniti.gov.in&format=rss",
+    category: "Planning & Development (GS 3)",
   },
 ];
 
@@ -181,8 +228,18 @@ export const getSourceBadgeClass = (source: string): string => {
       return "text-indigo-400 bg-indigo-500/10 border-indigo-500/30";
     case "Economic Times":
       return "text-yellow-400 bg-yellow-500/10 border-yellow-500/30";
-    case "ORF":
+    case "Times of India":
       return "text-rose-400 bg-rose-500/10 border-rose-500/30";
+    case "Hindustan Times":
+      return "text-pink-400 bg-pink-500/10 border-pink-500/30";
+    case "BBC News":
+      return "text-red-400 bg-red-500/10 border-red-500/30";
+    case "ORF":
+      return "text-rose-300 bg-rose-600/15 border-rose-500/30";
+    case "Sansad TV":
+      return "text-violet-400 bg-violet-500/10 border-violet-500/30";
+    case "NITI Aayog":
+      return "text-emerald-300 bg-emerald-600/15 border-emerald-500/30";
     default:
       return "text-sky-300 bg-sky-500/10 border-sky-500/20";
   }
@@ -224,7 +281,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
   // Saved Feeds
   const [savedFeeds, setSavedFeeds] = useState<SavedFeed[]>(() => {
     try {
-      const stored = localStorage.getItem("bolt_rss_feeds");
+      const stored = localStorage.getItem("bolt_rss_feeds_v2");
       if (stored) return JSON.parse(stored);
     } catch (e) {}
     return DEFAULT_PRESET_FEEDS;
@@ -251,7 +308,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
   const saveFeedsList = (feeds: SavedFeed[]) => {
     setSavedFeeds(feeds);
     try {
-      localStorage.setItem("bolt_rss_feeds", JSON.stringify(feeds));
+      localStorage.setItem("bolt_rss_feeds_v2", JSON.stringify(feeds));
     } catch (e) {}
   };
 
@@ -425,9 +482,10 @@ export const NewsView: React.FC<NewsViewProps> = ({
     const triggerTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
     try {
-      // Load the authenticated current-affairs snapshot. The server fetches fresh
-      // articles when its Firestore cache is empty; admin-only ingestion stays server-side.
-      const response = await fetch("/api/news/daily-current-affairs", {
+      // Load the authenticated current-affairs snapshot. When manual trigger or empty articles,
+      // request a fresh multi-source refresh from the server.
+      const syncUrl = isManualTrigger ? "/api/news/daily-current-affairs?refresh=true" : "/api/news/daily-current-affairs";
+      const response = await fetch(syncUrl, {
         method: "GET",
         headers: { Accept: "application/json", ...(await getAuthHeader()) },
       });
@@ -599,20 +657,31 @@ export const NewsView: React.FC<NewsViewProps> = ({
 
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  const sources = [
+  const baseSources = [
     "All",
     "The Hindu",
     "The Indian Express",
     "PIB",
     "Livemint",
+    "Economic Times",
     "Business Standard",
+    "Hindustan Times",
+    "Times of India",
     "Down To Earth",
     "LiveLaw",
+    "BBC News",
     "PRS Legislative",
-    "Economic Times",
     "ORF",
+    "Sansad TV",
+    "NITI Aayog",
     "Government Sources",
     "Editorials",
+  ];
+
+  const dynamicSources = Array.from(new Set(articles.map((a) => a.source).filter(Boolean)));
+  const sources = [
+    "All",
+    ...Array.from(new Set([...baseSources.slice(1), ...dynamicSources])),
   ];
 
   const filteredArticles = articles.filter((a) => {

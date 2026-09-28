@@ -549,6 +549,7 @@ export interface NewsArticle {
     | "Economic Times"
     | "ORF"
     | "BBC News"
+    | "Times of India"
     | "Sansad TV"
     | "NITI Aayog"
     | "Hindustan Times"

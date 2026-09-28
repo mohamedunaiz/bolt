@@ -1221,6 +1221,8 @@ app.get("/api/news/presets", (_req, res) => {
 const APPROVED_NEWS_FEED_HOSTNAMES = new Set<string>([
   "news.google.com",
   "www.news.google.com",
+  "www.bing.com",
+  "bing.com",
   "www.thehindu.com",
   "thehindu.com",
   "archive.pib.gov.in",
@@ -1239,10 +1241,16 @@ const APPROVED_NEWS_FEED_HOSTNAMES = new Set<string>([
   "www.orfonline.org",
   "orfonline.org",
   "economictimes.indiatimes.com",
+  "timesofindia.indiatimes.com",
   "indiatimes.com",
   "www.indiatimes.com",
   "www.livemint.com",
   "livemint.com",
+  "feeds.bbci.co.uk",
+  "www.hindustantimes.com",
+  "hindustantimes.com",
+  "www.aljazeera.com",
+  "aljazeera.com",
 ]);
 try {
   for (const preset of (POPULAR_UPSC_FEEDS as any[]) || []) {
@@ -1296,7 +1304,7 @@ app.post("/api/news/fetch-feed", requireAuth, async (req, res) => {
 
 // Sync multiple feeds in batch — every feed URL, including client-supplied ones, is checked
 // against the approved-source allowlist before being fetched. Persists successful results to Firestore.
-app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
+app.post("/api/news/sync-all", requireAuth, heavyTaskLimiter, async (req, res) => {
   try {
     const requestedFeeds: { url: string; sourceName?: string }[] | undefined = req.body.feeds;
     const feedUrls: { url: string; sourceName?: string }[] = (requestedFeeds && requestedFeeds.length > 0)
@@ -1455,15 +1463,20 @@ app.post("/api/news/pipeline/mcqs", requireAuth, aiRateLimiter, (req, res) => {
 });
 
 // 1.1.2 Daily Current Affairs Scheduled Trigger & Auto-Sync API
-app.get("/api/news/daily-current-affairs", authenticateToken, async (_req, res) => {
+app.get("/api/news/daily-current-affairs", authenticateToken, async (req, res) => {
   res.set("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
   try {
+    const isRefreshRequested = req.query.refresh === "true" || req.query.force === "true";
     let snapshot = await loadCurrentAffairsFromFirestore();
 
-    // If Firestore has no articles yet (e.g. cold start, first run, or unpopulated cache),
-    // automatically trigger the ingestion pipeline so the user immediately receives real articles.
-    if (!snapshot.articles || snapshot.articles.length === 0) {
-      console.log("[CURRENT-AFFAIRS] Firestore current_affairs/latest is empty. Triggering automated ingestion...");
+    // Check if snapshot has articles from more than one news source
+    const existingSources = new Set((snapshot.articles || []).map((a) => a.source));
+    const hasMultipleSources = existingSources.size > 1;
+
+    // If refresh requested, or if Firestore has no articles, or has only a single source (e.g. legacy The Hindu only),
+    // automatically trigger the ingestion pipeline across all configured multi-source feeds.
+    if (isRefreshRequested || !snapshot.articles || snapshot.articles.length === 0 || !hasMultipleSources) {
+      console.log(`[CURRENT-AFFAIRS] ${isRefreshRequested ? "Manual refresh requested." : !hasMultipleSources ? "Single source detected; populating full multi-source catalog." : "Empty cache."} Ingesting active publishers...`);
       try {
         const ingestionResult = await executeNewsIngestionPipeline();
         if (ingestionResult.articles && ingestionResult.articles.length > 0) {
