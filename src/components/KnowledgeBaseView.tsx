@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Archive,
   ArchiveRestore,
+  AlertCircle,
 } from "lucide-react";
 import { KnowledgeDocument, KnowledgeChunk } from "../types";
 
@@ -32,6 +33,7 @@ export function KnowledgeBaseView() {
   const [content, setContent] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Search Testbed State
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,6 +89,7 @@ export function KnowledgeBaseView() {
 
       const data = await res.json();
       if (data.success) {
+        setUploadError(null);
         setUploadSuccess(`Successfully indexed "${title}" into ${data.document.chunkCount} searchable RAG chunks!`);
         setTitle("");
         setContent("");
@@ -94,20 +97,19 @@ export function KnowledgeBaseView() {
         await fetchDocuments();
         setTimeout(() => setUploadSuccess(null), 5000);
       } else {
-        alert(data.message || "Failed to index document");
+        setUploadError(data.message || "Failed to index document");
+        setTimeout(() => setUploadError(null), 6000);
       }
     } catch (err) {
       console.error("Upload error:", err);
-      alert("Error uploading document to RAG engine");
+      setUploadError("Error uploading document to RAG engine. Check server connection.");
+      setTimeout(() => setUploadError(null), 6000);
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDelete = async (docId: string, docTitle: string) => {
-    if (!window.confirm(`Are you sure you want to remove "${docTitle}" from your RAG knowledge repository?`)) {
-      return;
-    }
+  const handleDelete = async (docId: string, _docTitle?: string) => {
     try {
       const res = await fetch(`/api/knowledge/documents/${encodeURIComponent(docId)}`, {
         method: "DELETE",
@@ -265,6 +267,13 @@ export function KnowledgeBaseView() {
         <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center gap-3 text-emerald-300 animate-fadeIn">
           <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
           <span className="text-sm font-medium">{uploadSuccess}</span>
+        </div>
+      )}
+
+      {uploadError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-3 text-red-300 animate-fadeIn">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400" />
+          <span className="text-sm font-medium">{uploadError}</span>
         </div>
       )}
 

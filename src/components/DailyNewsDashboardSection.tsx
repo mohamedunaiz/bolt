@@ -19,6 +19,7 @@ import {
   HelpCircle,
   Clock,
   TrendingUp,
+  Check,
 } from "lucide-react";
 import { NewsArticle, NavigationTab } from "../types";
 
@@ -37,6 +38,7 @@ export const DailyNewsDashboardSection: React.FC<DailyNewsDashboardSectionProps>
 }) => {
   const [activeArticleIndex, setActiveArticleIndex] = useState<number>(0);
   const [bookmarkedIds, setBookmarkedIds] = useState<Record<string, boolean>>({ "news-1": true });
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   const activeArticle = articles[activeArticleIndex] || articles[0];
 
@@ -150,13 +152,20 @@ export const DailyNewsDashboardSection: React.FC<DailyNewsDashboardSectionProps>
               </button>
               <button
                 onClick={() => {
-                  navigator.clipboard?.writeText(window.location.href);
-                  alert("Article summary link copied to clipboard!");
+                  try {
+                    navigator.clipboard?.writeText(window.location.href);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
+                  } catch {}
                 }}
                 className="p-1.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 hover:text-white transition-colors"
-                title="Share Article"
+                title={copiedLink ? "Link copied to clipboard!" : "Share Article"}
               >
-                <Share2 className="w-4 h-4" />
+                {copiedLink ? (
+                  <Check className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <Share2 className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>

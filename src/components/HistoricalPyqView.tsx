@@ -57,6 +57,7 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
   const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
   const [expandedModelAnswers, setExpandedModelAnswers] = useState<Record<string, boolean>>({});
   const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>({});
+  const [evalErrors, setEvalErrors] = useState<Record<string, string>>({});
 
   // 1. Fetch genuine verified PYQs & Recurring Theme Analytics from server
   useEffect(() => {
@@ -174,6 +175,13 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
 
   const handleDraftChange = (questionId: string, text: string) => {
     setDraftAnswers((prev) => ({ ...prev, [questionId]: text }));
+    if (evalErrors[questionId] && text.trim().length >= 20) {
+      setEvalErrors((prev) => {
+        const next = { ...prev };
+        delete next[questionId];
+        return next;
+      });
+    }
   };
 
   // Score statistics for Prelims MCQs answered in this session
@@ -666,9 +674,17 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
                           onClick={() => {
                             const text = draftAnswers[q.id];
                             if (!text || text.trim().length < 20) {
-                              alert("Please write at least 20 words to evaluate your answer.");
+                              setEvalErrors((prev) => ({
+                                ...prev,
+                                [q.id]: "Please write at least 20 words to evaluate your answer.",
+                              }));
                               return;
                             }
+                            setEvalErrors((prev) => {
+                              const next = { ...prev };
+                              delete next[q.id];
+                              return next;
+                            });
                             onEvaluateAnswer?.(q.questionText, text, q.marks || 10);
                           }}
                           className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow-md"
@@ -677,6 +693,11 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
                           <span>Evaluate Answer</span>
                         </button>
                       </div>
+                      {evalErrors[q.id] && (
+                        <p className="text-[11px] text-red-400 mt-1.5 font-medium animate-fadeIn">
+                          {evalErrors[q.id]}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

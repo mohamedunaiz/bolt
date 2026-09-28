@@ -233,7 +233,7 @@ export const AiPlatformTab: React.FC<AiPlatformTabProps> = ({ onNotify = (_msg: 
         loadPlatformData();
         onNotify(`Model ${modelId} activated for inference!`);
       } else {
-        alert(data.message || "Cannot activate model");
+        onNotify(data.message || "Cannot activate model");
       }
     } catch (err) {
       console.error(err);

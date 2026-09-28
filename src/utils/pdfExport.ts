@@ -371,16 +371,15 @@ export function exportMainsEvaluationPDF(
   }
 
   // Handle Action
+  const safeName = (evaluation.questionText || "mains-evaluation")
+    .slice(0, 30)
+    .replace(/[^a-zA-Z0-9]/g, "_")
+    .toLowerCase();
+
   if (options?.autoPrint) {
     doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  } else {
-    const safeName = (evaluation.questionText || "mains-evaluation")
-      .slice(0, 30)
-      .replace(/[^a-zA-Z0-9]/g, "_")
-      .toLowerCase();
-    doc.save(`bolt_mains_evaluation_${safeName}_${Date.now()}.pdf`);
   }
+  doc.save(`bolt_mains_evaluation_${safeName}_${Date.now()}.pdf`);
 
   return doc;
 }

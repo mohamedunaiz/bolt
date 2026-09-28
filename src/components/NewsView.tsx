@@ -163,6 +163,24 @@ export const NewsView: React.FC<NewsViewProps> = ({
     return DEFAULT_PRESET_FEEDS;
   });
 
+  const [bookmarkedIds, setBookmarkedIds] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem("bolt_news_bookmarks");
+      if (stored) return JSON.parse(stored);
+    } catch (e) {}
+    return {};
+  });
+
+  const toggleBookmark = (id: string) => {
+    setBookmarkedIds((prev) => {
+      const updated = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem("bolt_news_bookmarks", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
   const saveFeedsList = (feeds: SavedFeed[]) => {
     setSavedFeeds(feeds);
     try {
@@ -1249,10 +1267,23 @@ export const NewsView: React.FC<NewsViewProps> = ({
                     <span>Ask Bolt</span>
                   </button>
                   <button
-                    onClick={() => alert("Article bookmarked to your revision folder.")}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                    onClick={() => toggleBookmark(activeArticle.id)}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      bookmarkedIds[activeArticle.id]
+                        ? "text-amber-400 bg-amber-500/10"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                    title={
+                      bookmarkedIds[activeArticle.id]
+                        ? "Bookmarked in your revision folder"
+                        : "Bookmark for revision"
+                    }
                   >
-                    <Bookmark className="w-4 h-4" />
+                    <Bookmark
+                      className={`w-4 h-4 ${
+                        bookmarkedIds[activeArticle.id] ? "fill-current" : ""
+                      }`}
+                    />
                   </button>
                 </div>
               </div>

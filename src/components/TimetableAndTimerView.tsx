@@ -371,7 +371,8 @@ export const TimetableAndTimerView: React.FC<TimetableAndTimerViewProps> = ({
     soundEngine.stopAmbient();
 
     if (minutesToLog < 1) {
-      alert("Session too short to log (minimum 1 minute required).");
+      setLoggedNotification("Session too short to log (minimum 1 minute required).");
+      setTimeout(() => setLoggedNotification(null), 3500);
       return;
     }
 
