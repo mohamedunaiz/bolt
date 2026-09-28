@@ -407,8 +407,8 @@ app.post("/api/auth/login", authRateLimiter, (req, res) => {
 });
 
 // BOLT Desktop sign-in bridge (Electron app deep-link auth exchange).
-// Verifies its own Firebase ID token internally; rate-limited like other auth routes.
-app.use(authRateLimiter, desktopAuthRouter);
+// Verifies its own Firebase ID token internally; rate-limited specifically inside the router.
+app.use(desktopAuthRouter);
 
 app.post("/api/user/save-progress", requireAuth, async (req, res) => {
   try {

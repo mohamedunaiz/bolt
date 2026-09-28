@@ -44,7 +44,7 @@ firebase-debug.log*
 firebase-debug.*.log*
 
 # Runtime / local data
-data/
+/data/
 *.db
 *.sqlite
 *.sqlite3

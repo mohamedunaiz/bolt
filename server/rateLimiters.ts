@@ -41,11 +41,12 @@ export const generalApiLimiter = rateLimit({
   },
 });
 
-// Strict Authentication limiter: 15 attempts per 15 minutes
+// Strict Authentication limiter: 60 attempts per 15 minutes (successful auth skipped)
 export const authRateLimiter = rateLimit({
   ...baseLimiterConfig,
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: 60,
+  skipSuccessfulRequests: true,
   message: {
     success: false,
     error: "Too many login/registration attempts. Please wait 15 minutes.",

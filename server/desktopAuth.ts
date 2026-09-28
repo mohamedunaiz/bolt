@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { verifyFirebaseIdTokenStrict, mintCustomToken } from "./firebaseAdmin";
+import { authRateLimiter } from "./rateLimiters";
 
 /**
  * BOLT Desktop sign-in bridge.
@@ -23,7 +24,7 @@ import { verifyFirebaseIdTokenStrict, mintCustomToken } from "./firebaseAdmin";
  */
 const router = Router();
 
-router.post("/api/desktop-auth/exchange", async (req, res) => {
+router.post("/api/desktop-auth/exchange", authRateLimiter, async (req, res) => {
   try {
     const authHeader = req.headers.authorization || "";
     const idToken = authHeader.replace(/^Bearer\s+/i, "").trim();
