@@ -74,7 +74,7 @@ export const DailyNewsDashboardSection: React.FC<DailyNewsDashboardSectionProps>
             UPSC Current Affairs: Infographic & High-Yield Analysis
           </h3>
           <p className="text-slate-400 text-xs mt-0.5">
-            Structured daily briefs curated from The Hindu, PIB & Indian Express with syllabus mapping.
+            Structured daily briefs curated from The Hindu, Indian Express, PIB, Livemint, DTE & key national sources.
           </p>
         </div>
 
@@ -316,7 +316,7 @@ export const DailyNewsDashboardSection: React.FC<DailyNewsDashboardSectionProps>
           <Newspaper className="w-10 h-10 text-slate-500 mx-auto" />
           <h4 className="font-bold text-white text-sm">Today's Current Affairs Loading...</h4>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Fresh articles from The Hindu, PIB, and The Indian Express are being synchronized. You can also view or refresh them in the News tab.
+            Fresh articles from The Hindu, Indian Express, PIB, Livemint, and key national outlets are being synchronized. You can also view or refresh them in the News tab.
           </p>
           <button
             onClick={() => onNavigate("news")}

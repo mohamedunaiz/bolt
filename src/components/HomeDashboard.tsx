@@ -384,7 +384,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-sm">Today's Current Affairs</h3>
-                  <p className="text-[11px] text-slate-400">The Hindu · PIB · Indian Express</p>
+                  <p className="text-[11px] text-slate-400">The Hindu · Indian Express · PIB · Livemint · DTE</p>
                 </div>
               </div>
               <button

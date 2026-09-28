@@ -829,7 +829,7 @@ ${reasoning}
       appendMessageToActiveThread(assistantMsg);
 
       // Save to Firestore if authenticated
-      if (user.id && !user.id.startsWith("guest")) {
+      if (user.id && !user.id.startsWith("guest") && user.id !== "aspirant-default") {
         saveFirebaseChatMessage(user.id, userMsg).catch(() => {});
         saveFirebaseChatMessage(user.id, assistantMsg).catch(() => {});
       }

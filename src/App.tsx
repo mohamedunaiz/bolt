@@ -203,8 +203,8 @@ export default function App() {
         cacheTimetableOffline(currentSlots);
       } catch (e) {}
 
-      // If user is authenticated with an email, sync with backend store
-      if (currentUser.email) {
+      // If user is authenticated with an email (not guest or placeholder), sync with backend store
+      if (currentUser.email && currentUser.id !== "aspirant-default" && currentUser.email !== "aspirant@bolt.ai") {
         if (saveTimeoutRef.current) {
           clearTimeout(saveTimeoutRef.current);
         }
@@ -264,7 +264,7 @@ export default function App() {
 
     // 2. Initial load for stored user if no immediate auth state change
     const targetId = user.id || user.email;
-    if (targetId && !targetId.startsWith("guest")) {
+    if (targetId && !targetId.startsWith("guest") && targetId !== "aspirant-default") {
       loadUserProgress(targetId).then((saved) => {
         if (saved) {
           if (saved.user) setUser(saved.user);
@@ -431,8 +431,8 @@ export default function App() {
       if (progress.timetableSlots && progress.timetableSlots.length > 0)
         setTimetableSlots(progress.timetableSlots);
       if (progress.studySessions) setStudySessions(progress.studySessions);
-    } else if (loggedUser.email) {
-      loadUserProgress(loggedUser.email).then((saved) => {
+    } else if (loggedUser.id && loggedUser.id !== "aspirant-default" && !loggedUser.id.startsWith("guest")) {
+      loadUserProgress(loggedUser.id).then((saved) => {
         if (saved) {
           if (saved.user) setUser(saved.user);
           if (saved.topics && saved.topics.length > 0) setTopics(saved.topics);

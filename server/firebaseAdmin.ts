@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp, App, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
 import fs from "fs";
 import path from "path";
 
@@ -68,6 +69,35 @@ export function initFirebaseAdmin(): App | null {
       }
       isInitialized = true;
       return getApps()[0] || null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * Get Firestore instance for Firebase Admin SDK, respecting custom databaseId
+ */
+export function getAdminFirestore(): Firestore | null {
+  const app = initFirebaseAdmin();
+  if (!app) return null;
+  let databaseId: string | undefined;
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      if (cfg.firestoreDatabaseId) {
+        databaseId = cfg.firestoreDatabaseId;
+      }
+    }
+  } catch {}
+
+  try {
+    return databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+  } catch (e: any) {
+    console.warn("getAdminFirestore notice:", e.message);
+    try {
+      return getFirestore(app);
     } catch {
       return null;
     }

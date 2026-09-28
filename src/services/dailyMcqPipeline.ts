@@ -124,7 +124,7 @@ export async function handleMCQAttemptFeedback(
     timestamp: new Date().toISOString(),
   };
 
-  if (userId && !userId.startsWith("guest")) {
+  if (userId && !userId.startsWith("guest") && userId !== "aspirant-default") {
     try {
       await recordFirebaseMCQAttempt(userId, attemptRecord);
     } catch (e) {

@@ -118,8 +118,13 @@ export async function saveUserProgress(progress: UserFullProgressData): Promise<
     console.warn("Could not save to localStorage:", e);
   }
 
-  // 2. Persist to Firebase Firestore if not guest
-  if (userId && !userId.startsWith("guest")) {
+  // If user is guest or default offline template, do not attempt cloud or server persistence
+  if (!userId || userId.startsWith("guest") || userId === "aspirant-default" || userId === "aspirant@bolt.ai") {
+    return true;
+  }
+
+  // 2. Persist to Firebase Firestore if user is authenticated with Firebase as this user
+  if (auth.currentUser && auth.currentUser.uid === userId) {
     try {
       await Promise.all([
         saveFirebaseUserProfile(userId, progress.user),
@@ -132,7 +137,7 @@ export async function saveUserProgress(progress: UserFullProgressData): Promise<
   }
 
   // 3. Persist to server API as secondary backup
-  if (userId && !userId.startsWith("guest")) {
+  if (userId && !userId.startsWith("guest") && userId !== "aspirant-default" && userId !== "aspirant@bolt.ai") {
     try {
       const authHeaders = await getAuthHeader();
       await fetch("/api/user/save-progress", {
@@ -162,8 +167,19 @@ export async function saveUserProgress(progress: UserFullProgressData): Promise<
  * falling back to the Express server and local storage.
  */
 export async function loadUserProgress(userId: string): Promise<UserFullProgressData | null> {
-  if (userId && !userId.startsWith("guest")) {
-    // 1. Try Firebase Firestore
+  // If user is guest or default offline template, read only from local storage
+  if (!userId || userId.startsWith("guest") || userId === "aspirant-default" || userId === "aspirant@bolt.ai") {
+    try {
+      const raw = localStorage.getItem(`${USER_PROGRESS_KEY_PREFIX}${userId}`);
+      if (raw) {
+        return JSON.parse(raw) as UserFullProgressData;
+      }
+    } catch {}
+    return null;
+  }
+
+  // 1. Try Firebase Firestore only if user is authenticated and matches userId
+  if (auth.currentUser && auth.currentUser.uid === userId) {
     try {
       const [fireProfile, fireTopics, fireMains, fireSlots, fireSessions] = await Promise.all([
         getFirebaseUserProfile(userId),
@@ -203,8 +219,9 @@ export async function loadUserProgress(userId: string): Promise<UserFullProgress
 
         return fullData;
       }
-    } catch (e) {
-      console.warn("Could not read from Firestore, trying Express API:", e);
+      } catch (e) {
+        console.warn("Could not read from Firestore, trying Express API:", e);
+      }
     }
 
     // 2. Try Express server API
@@ -233,7 +250,6 @@ export async function loadUserProgress(userId: string): Promise<UserFullProgress
     } catch (e) {
       console.warn("Server API fallback failed:", e);
     }
-  }
 
   // 3. Fallback to local storage
   try {

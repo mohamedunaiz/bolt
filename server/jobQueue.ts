@@ -11,8 +11,7 @@
 
 import fs from "fs";
 import path from "path";
-import { initFirebaseAdmin } from "./firebaseAdmin";
-import { getFirestore } from "firebase-admin/firestore";
+import { initFirebaseAdmin, getAdminFirestore } from "./firebaseAdmin";
 
 export type JobType =
   | "document_indexing"
@@ -109,10 +108,7 @@ class BoltJobQueueManager {
     }
 
     try {
-      const app = initFirebaseAdmin();
-      if (app) {
-        this.firestoreDb = getFirestore(app);
-      }
+      this.firestoreDb = getAdminFirestore();
     } catch (err: any) {
       this.firestoreDb = null;
       console.warn("[JobQueue] Firestore sync unavailable, operating with local durable store:", err.message);

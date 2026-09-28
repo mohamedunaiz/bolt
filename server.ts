@@ -27,8 +27,7 @@ import {
   getUserProgress,
   getUserProgressAsync,
 } from "./server/userStore";
-import { initFirebaseAdmin, setAdminCustomClaim } from "./server/firebaseAdmin";
-import { getFirestore } from "firebase-admin/firestore";
+import { initFirebaseAdmin, setAdminCustomClaim, getAdminFirestore } from "./server/firebaseAdmin";
 import {
   listDocuments,
   getDocumentById,
@@ -1051,7 +1050,7 @@ app.get("/api/bolt/topic-diagnostic", requireAuth, (req, res) => {
 // write on knowledge_nodes / knowledge_edges / knowledge_clusters) but the server never
 // actually used it. This migrates the implementation to match those rules, using the
 // Firebase Admin SDK that initFirebaseAdmin() already initializes at module load.
-const kgDb = getFirestore();
+const kgDb = getAdminFirestore();
 const KG_NODES_COLLECTION = "knowledge_nodes";
 const KG_EDGES_COLLECTION = "knowledge_edges";
 const KG_CLUSTERS_COLLECTION = "knowledge_clusters";
@@ -1226,6 +1225,7 @@ const APPROVED_NEWS_FEED_HOSTNAMES = new Set<string>([
   "thehindu.com",
   "archive.pib.gov.in",
   "pib.gov.in",
+  "www.pib.gov.in",
   "indianexpress.com",
   "www.indianexpress.com",
   "www.downtoearth.org.in",
@@ -1239,6 +1239,8 @@ const APPROVED_NEWS_FEED_HOSTNAMES = new Set<string>([
   "www.orfonline.org",
   "orfonline.org",
   "economictimes.indiatimes.com",
+  "indiatimes.com",
+  "www.indiatimes.com",
   "www.livemint.com",
   "livemint.com",
 ]);

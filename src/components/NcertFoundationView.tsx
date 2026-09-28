@@ -105,7 +105,7 @@ export const NcertFoundationView: React.FC = () => {
     const loadCloudProgress = async () => {
       const user = getStoredCurrentUser();
       const userId = user?.id || user?.email;
-      if (!userId) return;
+      if (!userId || userId === "aspirant-default") return;
       try {
         const cloudData = await getFirebaseNcertProgress(userId);
         if (cloudData && cloudData.chapterStatus) {
@@ -138,7 +138,7 @@ export const NcertFoundationView: React.FC = () => {
       // Push to Firestore if authenticated
       const user = getStoredCurrentUser();
       const userId = user?.id || user?.email;
-      if (userId) {
+      if (userId && userId !== "aspirant-default") {
         const completedIds = Object.keys(updated).filter((k) => updated[k] === "completed");
         const inProgressIds = Object.keys(updated).filter((k) => updated[k] === "in_progress");
         const revisionIds = Object.keys(updated).filter((k) => updated[k] === "needs_revision");
@@ -201,7 +201,7 @@ export const NcertFoundationView: React.FC = () => {
 
           const user = getStoredCurrentUser();
           const userId = user?.id || user?.email;
-          if (userId) {
+          if (userId && userId !== "aspirant-default") {
             saveFirebaseNcertProgress(userId, { quizScores: nextScores });
           }
           return nextScores;

@@ -541,13 +541,23 @@ export interface NewsArticle {
     | "The Hindu"
     | "PIB"
     | "The Indian Express"
-    | "Government Sources"
-    | "Editorials"
-    | "Down To Earth"
+    | "Livemint"
     | "Business Standard"
+    | "Down To Earth"
     | "LiveLaw"
     | "PRS Legislative"
-    | "ORF";
+    | "Economic Times"
+    | "ORF"
+    | "BBC News"
+    | "Sansad TV"
+    | "NITI Aayog"
+    | "Hindustan Times"
+    | "Yojana & Kurukshetra"
+    | "IDSA"
+    | "Scroll.in"
+    | "Government Sources"
+    | "Editorials"
+    | (string & {});
   headline: string;
   page?: string;
   gsTags: string[];

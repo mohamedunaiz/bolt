@@ -1,4 +1,5 @@
 import {
+  auth,
   db,
   doc,
   getDoc,
@@ -12,6 +13,7 @@ import {
   limit,
   serverTimestamp,
 } from "../lib/firebase";
+import { handleFirestoreError, OperationType } from "../lib/firebaseErrors";
 import {
   UserProfile,
   SyllabusTopic,
@@ -33,31 +35,52 @@ import {
  * User B can only read and write /users/{userB_uid}/*
  */
 
+/**
+ * Verifies that a current authenticated Firebase user is present and matches the requested user ID.
+ * Under zero-trust security rules, any Firestore call to /users/{uid} requires request.auth.uid == uid.
+ */
+export function isUserAuthorizedForDoc(uid: string): boolean {
+  if (!uid || uid === "aspirant-default" || uid === "aspirant@bolt.ai" || uid.startsWith("guest")) {
+    return false;
+  }
+  return !!auth.currentUser && auth.currentUser.uid === uid;
+}
+
 // ----------------------------------------------------
 // USER PROFILE OPERATIONS
 // ----------------------------------------------------
 
 export async function saveFirebaseUserProfile(uid: string, profile: Partial<UserProfile>): Promise<void> {
-  if (!uid) return;
-  const userRef = doc(db, "users", uid);
-  await setDoc(
-    userRef,
-    {
-      ...profile,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  if (!uid || !isUserAuthorizedForDoc(uid)) return;
+  const path = `users/${uid}`;
+  try {
+    const userRef = doc(db, "users", uid);
+    await setDoc(
+      userRef,
+      {
+        ...profile,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function getFirebaseUserProfile(uid: string): Promise<UserProfile | null> {
-  if (!uid) return null;
-  const userRef = doc(db, "users", uid);
-  const snap = await getDoc(userRef);
-  if (snap.exists()) {
-    return snap.data() as UserProfile;
+  if (!uid || !isUserAuthorizedForDoc(uid)) return null;
+  const path = `users/${uid}`;
+  try {
+    const userRef = doc(db, "users", uid);
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      return snap.data() as UserProfile;
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
   }
-  return null;
 }
 
 // ----------------------------------------------------
@@ -65,27 +88,34 @@ export async function getFirebaseUserProfile(uid: string): Promise<UserProfile |
 // ----------------------------------------------------
 
 export async function saveFirebaseUserTopics(uid: string, topics: SyllabusTopic[]): Promise<void> {
-  if (!uid || !topics || topics.length === 0) return;
-  const topicsCollection = collection(db, "users", uid, "topics");
-
-  // Save each topic document indexed by topic.id
-  const promises = topics.map((t) => {
-    const topicRef = doc(topicsCollection, t.id);
-    return setDoc(topicRef, {
-      ...t,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-  });
-
-  await Promise.all(promises);
+  if (!uid || !topics || topics.length === 0 || !isUserAuthorizedForDoc(uid)) return;
+  const path = `users/${uid}/topics`;
+  try {
+    const topicsCollection = collection(db, "users", uid, "topics");
+    const promises = topics.map((t) => {
+      const topicRef = doc(topicsCollection, t.id);
+      return setDoc(topicRef, {
+        ...t,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    });
+    await Promise.all(promises);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function getFirebaseUserTopics(uid: string): Promise<SyllabusTopic[]> {
-  if (!uid) return [];
-  const topicsCollection = collection(db, "users", uid, "topics");
-  const snap = await getDocs(topicsCollection);
-  if (snap.empty) return [];
-  return snap.docs.map((d) => d.data() as SyllabusTopic);
+  if (!uid || !isUserAuthorizedForDoc(uid)) return [];
+  const path = `users/${uid}/topics`;
+  try {
+    const topicsCollection = collection(db, "users", uid, "topics");
+    const snap = await getDocs(topicsCollection);
+    if (snap.empty) return [];
+    return snap.docs.map((d) => d.data() as SyllabusTopic);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
 }
 
 // ----------------------------------------------------
@@ -105,21 +135,32 @@ export interface RecordedMCQAttempt {
 }
 
 export async function recordFirebaseMCQAttempt(uid: string, attempt: RecordedMCQAttempt): Promise<void> {
-  if (!uid) return;
-  const attemptRef = doc(db, "users", uid, "mcq_attempts", attempt.id || `mcq_${Date.now()}`);
-  await setDoc(attemptRef, {
-    ...attempt,
-    timestamp: attempt.timestamp || new Date().toISOString(),
-    createdAt: serverTimestamp(),
-  });
+  if (!uid || !isUserAuthorizedForDoc(uid)) return;
+  const docId = attempt.id || `mcq_${Date.now()}`;
+  const path = `users/${uid}/mcq_attempts/${docId}`;
+  try {
+    const attemptRef = doc(db, "users", uid, "mcq_attempts", docId);
+    await setDoc(attemptRef, {
+      ...attempt,
+      timestamp: attempt.timestamp || new Date().toISOString(),
+      createdAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function getFirebaseMCQAttempts(uid: string, limitCount = 100): Promise<RecordedMCQAttempt[]> {
-  if (!uid) return [];
-  const attemptsRef = collection(db, "users", uid, "mcq_attempts");
-  const q = query(attemptsRef, orderBy("timestamp", "desc"), limit(limitCount));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => d.data() as RecordedMCQAttempt);
+  if (!uid || !isUserAuthorizedForDoc(uid)) return [];
+  const path = `users/${uid}/mcq_attempts`;
+  try {
+    const attemptsRef = collection(db, "users", uid, "mcq_attempts");
+    const q = query(attemptsRef, orderBy("timestamp", "desc"), limit(limitCount));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data() as RecordedMCQAttempt);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
 }
 
 // ----------------------------------------------------
@@ -127,20 +168,30 @@ export async function getFirebaseMCQAttempts(uid: string, limitCount = 100): Pro
 // ----------------------------------------------------
 
 export async function recordFirebaseMainsSubmission(uid: string, evaluation: MainsAnswerEvaluation): Promise<void> {
-  if (!uid) return;
-  const submissionRef = doc(db, "users", uid, "mains_submissions", evaluation.id);
-  await setDoc(submissionRef, {
-    ...evaluation,
-    createdAt: serverTimestamp(),
-  }, { merge: true });
+  if (!uid || !isUserAuthorizedForDoc(uid)) return;
+  const path = `users/${uid}/mains_submissions/${evaluation.id}`;
+  try {
+    const submissionRef = doc(db, "users", uid, "mains_submissions", evaluation.id);
+    await setDoc(submissionRef, {
+      ...evaluation,
+      createdAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function getFirebaseMainsSubmissions(uid: string): Promise<MainsAnswerEvaluation[]> {
-  if (!uid) return [];
-  const submissionsRef = collection(db, "users", uid, "mains_submissions");
-  const q = query(submissionsRef, orderBy("submittedDate", "desc"));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => d.data() as MainsAnswerEvaluation);
+  if (!uid || !isUserAuthorizedForDoc(uid)) return [];
+  const path = `users/${uid}/mains_submissions`;
+  try {
+    const submissionsRef = collection(db, "users", uid, "mains_submissions");
+    const q = query(submissionsRef, orderBy("submittedDate", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data() as MainsAnswerEvaluation);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
 }
 
 // ----------------------------------------------------
@@ -148,36 +199,57 @@ export async function getFirebaseMainsSubmissions(uid: string): Promise<MainsAns
 // ----------------------------------------------------
 
 export async function saveFirebaseTimetableSlots(uid: string, slots: TimetableSlot[]): Promise<void> {
-  if (!uid) return;
-  const slotsDoc = doc(db, "users", uid, "state", "timetable");
-  await setDoc(slotsDoc, { slots, updatedAt: serverTimestamp() }, { merge: true });
+  if (!uid || !isUserAuthorizedForDoc(uid)) return;
+  const path = `users/${uid}/state/timetable`;
+  try {
+    const slotsDoc = doc(db, "users", uid, "state", "timetable");
+    await setDoc(slotsDoc, { slots, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function getFirebaseTimetableSlots(uid: string): Promise<TimetableSlot[] | null> {
-  if (!uid) return null;
-  const slotsDoc = doc(db, "users", uid, "state", "timetable");
-  const snap = await getDoc(slotsDoc);
-  if (snap.exists()) {
-    return (snap.data().slots as TimetableSlot[]) || null;
+  if (!uid || !isUserAuthorizedForDoc(uid)) return null;
+  const path = `users/${uid}/state/timetable`;
+  try {
+    const slotsDoc = doc(db, "users", uid, "state", "timetable");
+    const snap = await getDoc(slotsDoc);
+    if (snap.exists()) {
+      return (snap.data().slots as TimetableSlot[]) || null;
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
   }
-  return null;
 }
 
 export async function recordFirebaseStudySession(uid: string, session: StudySessionLog): Promise<void> {
-  if (!uid) return;
-  const sessionDoc = doc(db, "users", uid, "study_sessions", session.id || `sess_${Date.now()}`);
-  await setDoc(sessionDoc, {
-    ...session,
-    createdAt: serverTimestamp(),
-  });
+  if (!uid || !isUserAuthorizedForDoc(uid)) return;
+  const docId = session.id || `sess_${Date.now()}`;
+  const path = `users/${uid}/study_sessions/${docId}`;
+  try {
+    const sessionDoc = doc(db, "users", uid, "study_sessions", docId);
+    await setDoc(sessionDoc, {
+      ...session,
+      createdAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function getFirebaseStudySessions(uid: string): Promise<StudySessionLog[]> {
-  if (!uid) return [];
-  const sessionsRef = collection(db, "users", uid, "study_sessions");
-  const q = query(sessionsRef, orderBy("timestamp", "desc"), limit(50));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => d.data() as StudySessionLog);
+  if (!uid || !isUserAuthorizedForDoc(uid)) return [];
+  const path = `users/${uid}/study_sessions`;
+  try {
+    const sessionsRef = collection(db, "users", uid, "study_sessions");
+    const q = query(sessionsRef, orderBy("timestamp", "desc"), limit(50));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data() as StudySessionLog);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
 }
 
 // ----------------------------------------------------
@@ -185,20 +257,30 @@ export async function getFirebaseStudySessions(uid: string): Promise<StudySessio
 // ----------------------------------------------------
 
 export async function saveFirebaseChatMessage(uid: string, message: ChatMessage): Promise<void> {
-  if (!uid) return;
-  const chatDoc = doc(db, "users", uid, "chat_messages", message.id);
-  await setDoc(chatDoc, {
-    ...message,
-    savedAt: serverTimestamp(),
-  });
+  if (!uid || !isUserAuthorizedForDoc(uid)) return;
+  const path = `users/${uid}/chat_messages/${message.id}`;
+  try {
+    const chatDoc = doc(db, "users", uid, "chat_messages", message.id);
+    await setDoc(chatDoc, {
+      ...message,
+      savedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function getFirebaseChatMessages(uid: string, limitCount = 30): Promise<ChatMessage[]> {
-  if (!uid) return [];
-  const chatRef = collection(db, "users", uid, "chat_messages");
-  const q = query(chatRef, orderBy("timestamp", "asc"), limit(limitCount));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => d.data() as ChatMessage);
+  if (!uid || !isUserAuthorizedForDoc(uid)) return [];
+  const path = `users/${uid}/chat_messages`;
+  try {
+    const chatRef = collection(db, "users", uid, "chat_messages");
+    const q = query(chatRef, orderBy("timestamp", "asc"), limit(limitCount));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data() as ChatMessage);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
 }
 
 // ----------------------------------------------------
@@ -434,7 +516,8 @@ export async function saveFirebaseNcertProgress(
   uid: string,
   progress: Partial<NcertProgressRecord>
 ): Promise<void> {
-  if (!uid) return;
+  if (!uid || !isUserAuthorizedForDoc(uid)) return;
+  const path = `users/${uid}/ncert_progress/foundation_curriculum`;
   try {
     const ncertDocRef = doc(db, "users", uid, "ncert_progress", "foundation_curriculum");
     await setDoc(
@@ -446,14 +529,15 @@ export async function saveFirebaseNcertProgress(
       { merge: true }
     );
   } catch (err) {
-    console.info("Firebase NCERT progress save info:", err);
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 
 export async function getFirebaseNcertProgress(
   uid: string
 ): Promise<NcertProgressRecord | null> {
-  if (!uid) return null;
+  if (!uid || !isUserAuthorizedForDoc(uid)) return null;
+  const path = `users/${uid}/ncert_progress/foundation_curriculum`;
   try {
     const ncertDocRef = doc(db, "users", uid, "ncert_progress", "foundation_curriculum");
     const snap = await getDoc(ncertDocRef);
@@ -461,7 +545,7 @@ export async function getFirebaseNcertProgress(
       return snap.data() as NcertProgressRecord;
     }
   } catch (err) {
-    console.info("Firebase NCERT progress fetch info:", err);
+    handleFirestoreError(err, OperationType.GET, path);
   }
   return null;
 }

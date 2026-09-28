@@ -3,8 +3,7 @@ import path from "path";
 import { NewsArticle, PrelimsQuestion } from "../src/types";
 import { fetchAndParseRssFeed, POPULAR_UPSC_FEEDS } from "./rssService";
 import { getGeminiClient, executeGeminiWithFailover } from "./aiGateway";
-import { getFirestore } from "firebase-admin/firestore";
-import { initFirebaseAdmin } from "./firebaseAdmin";
+import { initFirebaseAdmin, getAdminFirestore } from "./firebaseAdmin";
 
 /**
  * BOLT UPSC Current Affairs Processing Pipeline
@@ -80,9 +79,9 @@ export async function loadCurrentAffairsFromFirestore(): Promise<{
 }> {
   // 1. Try Firebase Admin SDK
   try {
-    const app = initFirebaseAdmin();
-    if (app) {
-      const snapshot = await getFirestore(app)
+    const db = getAdminFirestore();
+    if (db) {
+      const snapshot = await db
         .collection(CURRENT_AFFAIRS_COLLECTION)
         .doc(CURRENT_AFFAIRS_DOCUMENT)
         .get();
@@ -143,10 +142,10 @@ export async function saveCurrentAffairsToFirestore(
   }
 
   try {
-    const app = initFirebaseAdmin();
-    if (!app) return;
+    const db = getAdminFirestore();
+    if (!db) return;
     console.log("[CURRENT-AFFAIRS] writing Firestore current_affairs/latest");
-    await getFirestore(app)
+    await db
       .collection(CURRENT_AFFAIRS_COLLECTION)
       .doc(CURRENT_AFFAIRS_DOCUMENT)
       .set(
@@ -223,7 +222,7 @@ export function deduplicateArticles(newArticles: NewsArticle[], existingArticles
     }
   }
 
-  return merged.slice(0, 100); // Retain top 100 high-yield articles
+  return merged.slice(0, 200); // Retain top 200 high-yield articles across all sources
 }
 
 export interface SourceHealth {

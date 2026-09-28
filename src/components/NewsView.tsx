@@ -41,7 +41,19 @@ interface NewsViewProps {
 interface SavedFeed {
   id: string;
   name: string;
-  source: "The Hindu" | "PIB" | "The Indian Express" | "Down To Earth" | "LiveLaw" | "PRS Legislative" | "Business Standard" | "ORF" | "Government Sources" | "Editorials";
+  source:
+    | "The Hindu"
+    | "PIB"
+    | "The Indian Express"
+    | "Livemint"
+    | "Business Standard"
+    | "Down To Earth"
+    | "LiveLaw"
+    | "PRS Legislative"
+    | "Economic Times"
+    | "ORF"
+    | "Government Sources"
+    | "Editorials";
   url: string;
   category: string;
   lastSynced?: string;
@@ -57,22 +69,64 @@ const DEFAULT_PRESET_FEEDS: SavedFeed[] = [
     category: "Editorials",
   },
   {
+    id: "preset-hindu-nat",
+    name: "The Hindu - National Affairs",
+    source: "The Hindu",
+    url: "https://www.thehindu.com/news/national/feeder/default.rss",
+    category: "National (GS 2)",
+  },
+  {
     id: "preset-ie-exp",
     name: "The Indian Express - Explained",
     source: "The Indian Express",
     url: "https://news.google.com/rss/search?q=site%3Aindianexpress.com+explained&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "In-depth Analysis",
+    category: "In-depth Analysis (GS 2/3)",
+  },
+  {
+    id: "preset-ie-ed",
+    name: "The Indian Express - Opinion & Editorials",
+    source: "The Indian Express",
+    url: "https://news.google.com/rss/search?q=site%3Aindianexpress.com+opinion+OR+editorial&hl=en-IN&gl=IN&ceid=IN%3Aen",
+    category: "Editorials & Opinions",
   },
   {
     id: "preset-pib",
     name: "PIB - Official Press Releases",
     source: "PIB",
+    url: "https://pib.gov.in/RssMain.aspx?ModId=6",
+    category: "Union Government Notifications",
+  },
+  {
+    id: "preset-pib-cabinet",
+    name: "PIB - Cabinet Decisions & Schemes",
+    source: "PIB",
     url: "https://news.google.com/rss/search?q=site%3Apib.gov.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Government Sources",
+    category: "Government Schemes & Policy",
+  },
+  {
+    id: "preset-livemint-econ",
+    name: "Livemint - Economy & Macro Policy",
+    source: "Livemint",
+    url: "https://www.livemint.com/rss/economy",
+    category: "Macroeconomics (GS 3)",
+  },
+  {
+    id: "preset-livemint-pol",
+    name: "Livemint - Politics & Governance",
+    source: "Livemint",
+    url: "https://www.livemint.com/rss/politics",
+    category: "Governance & Polity (GS 2)",
+  },
+  {
+    id: "preset-bs",
+    name: "Business Standard - Economy & Fiscal Policy",
+    source: "Business Standard",
+    url: "https://www.business-standard.com/rss/economy-policy-102.rss",
+    category: "Indian Economy & Industry (GS 3)",
   },
   {
     id: "preset-dte",
-    name: "Down To Earth - Environment & Wildlife",
+    name: "Down To Earth - Environment & Ecology",
     source: "Down To Earth",
     url: "https://news.google.com/rss/search?q=site%3Adowntoearth.org.in&hl=en-IN&gl=IN&ceid=IN%3Aen",
     category: "Environment & Ecology (GS 3)",
@@ -92,11 +146,11 @@ const DEFAULT_PRESET_FEEDS: SavedFeed[] = [
     category: "Parliament & Legislation (GS 2)",
   },
   {
-    id: "preset-bs",
-    name: "Business Standard - Economy & Fiscal Policy",
-    source: "Business Standard",
-    url: "https://news.google.com/rss/search?q=site%3Abusiness-standard.com+economy&hl=en-IN&gl=IN&ceid=IN%3Aen",
-    category: "Indian Economy & Industry (GS 3)",
+    id: "preset-et",
+    name: "Economic Times - Economy & Policy",
+    source: "Economic Times",
+    url: "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",
+    category: "Economy & Governance (GS 3)",
   },
   {
     id: "preset-orf",
@@ -105,21 +159,34 @@ const DEFAULT_PRESET_FEEDS: SavedFeed[] = [
     url: "https://news.google.com/rss/search?q=site%3Aorfonline.org&hl=en-IN&gl=IN&ceid=IN%3Aen",
     category: "International Relations & Security (GS 2/3)",
   },
-  {
-    id: "preset-et",
-    name: "Economic Times - Economy & Policy",
-    source: "Government Sources",
-    url: "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms",
-    category: "Economy & Governance",
-  },
-  {
-    id: "preset-livemint",
-    name: "Livemint - Politics & Governance",
-    source: "Government Sources",
-    url: "https://www.livemint.com/rss/politics",
-    category: "Polity & Governance",
-  },
 ];
+
+export const getSourceBadgeClass = (source: string): string => {
+  switch (source) {
+    case "The Hindu":
+      return "text-blue-400 bg-blue-500/10 border-blue-500/30";
+    case "The Indian Express":
+      return "text-emerald-400 bg-emerald-500/10 border-emerald-500/30";
+    case "PIB":
+      return "text-amber-400 bg-amber-500/10 border-amber-500/30";
+    case "Livemint":
+      return "text-orange-400 bg-orange-500/10 border-orange-500/30";
+    case "Business Standard":
+      return "text-cyan-400 bg-cyan-500/10 border-cyan-500/30";
+    case "Down To Earth":
+      return "text-teal-400 bg-teal-500/10 border-teal-500/30";
+    case "LiveLaw":
+      return "text-purple-400 bg-purple-500/10 border-purple-500/30";
+    case "PRS Legislative":
+      return "text-indigo-400 bg-indigo-500/10 border-indigo-500/30";
+    case "Economic Times":
+      return "text-yellow-400 bg-yellow-500/10 border-yellow-500/30";
+    case "ORF":
+      return "text-rose-400 bg-rose-500/10 border-rose-500/30";
+    default:
+      return "text-sky-300 bg-sky-500/10 border-sky-500/20";
+  }
+};
 
 export const NewsView: React.FC<NewsViewProps> = ({
   articles,
@@ -537,10 +604,12 @@ export const NewsView: React.FC<NewsViewProps> = ({
     "The Hindu",
     "The Indian Express",
     "PIB",
+    "Livemint",
+    "Business Standard",
     "Down To Earth",
     "LiveLaw",
     "PRS Legislative",
-    "Business Standard",
+    "Economic Times",
     "ORF",
     "Government Sources",
     "Editorials",
@@ -888,10 +957,17 @@ export const NewsView: React.FC<NewsViewProps> = ({
                   className="w-full bg-[#162033] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="The Hindu">The Hindu</option>
-                  <option value="PIB">Press Information Bureau (PIB)</option>
                   <option value="The Indian Express">The Indian Express</option>
+                  <option value="PIB">Press Information Bureau (PIB)</option>
+                  <option value="Livemint">Livemint</option>
+                  <option value="Business Standard">Business Standard</option>
+                  <option value="Down To Earth">Down To Earth (DTE)</option>
+                  <option value="LiveLaw">LiveLaw (Supreme Court)</option>
+                  <option value="PRS Legislative">PRS Legislative Research</option>
+                  <option value="Economic Times">Economic Times</option>
+                  <option value="ORF">Observer Research Foundation (ORF)</option>
                   <option value="Government Sources">Government Sources</option>
-                  <option value="Editorials">Editorials</option>
+                  <option value="Editorials">Editorials & Opinions</option>
                 </select>
               </div>
 
@@ -901,7 +977,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
                 </label>
                 <input
                   type="url"
-                  placeholder="e.g., https://www.thehindu.com/opinion/editorial/feeder/default.rss"
+                  placeholder="e.g., https://pib.gov.in/RssMain.aspx?ModId=6 or Google News RSS"
                   value={feedUrlInput}
                   onChange={(e) => setFeedUrlInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -958,45 +1034,10 @@ export const NewsView: React.FC<NewsViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setFeedSourceInput("Government Sources");
-                  setFeedUrlInput("https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms");
-                  handleAddAndFetchFeed("https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms", "Government Sources");
-                }}
-                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-amber-300 border border-amber-500/30 transition-colors flex items-center space-x-1"
-              >
-                <span>Economic Times (Economy)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setFeedSourceInput("Government Sources");
-                  setFeedUrlInput("https://www.livemint.com/rss/politics");
-                  handleAddAndFetchFeed("https://www.livemint.com/rss/politics", "Government Sources");
-                }}
-                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-purple-300 border border-purple-500/30 transition-colors flex items-center space-x-1"
-              >
-                <span>Livemint (Polity)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setFeedSourceInput("PIB");
-                  setFeedUrlInput("https://pib.gov.in/press-releases");
-                  handleAddAndFetchFeed("https://pib.gov.in/press-releases", "PIB");
-                }}
-                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-amber-300 border border-amber-500/30 transition-colors flex items-center space-x-1"
-              >
-                <span>PIB Press Releases</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
                   setFeedSourceInput("The Indian Express");
-                  setFeedUrlInput("https://indianexpress.com/section/explained/feed/");
-                  handleAddAndFetchFeed("https://indianexpress.com/section/explained/feed/", "The Indian Express");
+                  const url = "https://news.google.com/rss/search?q=site%3Aindianexpress.com+explained&hl=en-IN&gl=IN&ceid=IN%3Aen";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "The Indian Express");
                 }}
                 className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-emerald-300 border border-emerald-500/30 transition-colors flex items-center space-x-1"
               >
@@ -1007,12 +1048,117 @@ export const NewsView: React.FC<NewsViewProps> = ({
                 type="button"
                 onClick={() => {
                   setFeedSourceInput("The Indian Express");
-                  setFeedUrlInput("https://indianexpress.com/section/opinion/editorials/feed/");
-                  handleAddAndFetchFeed("https://indianexpress.com/section/opinion/editorials/feed/", "The Indian Express");
+                  const url = "https://news.google.com/rss/search?q=site%3Aindianexpress.com+opinion+OR+editorial&hl=en-IN&gl=IN&ceid=IN%3Aen";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "The Indian Express");
                 }}
                 className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-emerald-300 border border-emerald-500/30 transition-colors flex items-center space-x-1"
               >
-                <span>Indian Express (Editorials)</span>
+                <span>Indian Express (Editorial)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedSourceInput("PIB");
+                  const url = "https://pib.gov.in/RssMain.aspx?ModId=6";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "PIB");
+                }}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-amber-300 border border-amber-500/30 transition-colors flex items-center space-x-1"
+              >
+                <span>PIB Releases</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedSourceInput("Livemint");
+                  const url = "https://www.livemint.com/rss/economy";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "Livemint");
+                }}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-orange-300 border border-orange-500/30 transition-colors flex items-center space-x-1"
+              >
+                <span>Livemint (Economy)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedSourceInput("Business Standard");
+                  const url = "https://www.business-standard.com/rss/economy-policy-102.rss";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "Business Standard");
+                }}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-cyan-300 border border-cyan-500/30 transition-colors flex items-center space-x-1"
+              >
+                <span>Business Standard</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedSourceInput("Down To Earth");
+                  const url = "https://news.google.com/rss/search?q=site%3Adowntoearth.org.in&hl=en-IN&gl=IN&ceid=IN%3Aen";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "Down To Earth");
+                }}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-teal-300 border border-teal-500/30 transition-colors flex items-center space-x-1"
+              >
+                <span>Down To Earth</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedSourceInput("LiveLaw");
+                  const url = "https://news.google.com/rss/search?q=site%3Alivelaw.in&hl=en-IN&gl=IN&ceid=IN%3Aen";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "LiveLaw");
+                }}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-purple-300 border border-purple-500/30 transition-colors flex items-center space-x-1"
+              >
+                <span>LiveLaw (Supreme Court)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedSourceInput("PRS Legislative");
+                  const url = "https://news.google.com/rss/search?q=site%3Aprsindia.org&hl=en-IN&gl=IN&ceid=IN%3Aen";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "PRS Legislative");
+                }}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-indigo-300 border border-indigo-500/30 transition-colors flex items-center space-x-1"
+              >
+                <span>PRS Legislative</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedSourceInput("Economic Times");
+                  const url = "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "Economic Times");
+                }}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-yellow-300 border border-yellow-500/30 transition-colors flex items-center space-x-1"
+              >
+                <span>Economic Times</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedSourceInput("ORF");
+                  const url = "https://news.google.com/rss/search?q=site%3Aorfonline.org&hl=en-IN&gl=IN&ceid=IN%3Aen";
+                  setFeedUrlInput(url);
+                  handleAddAndFetchFeed(url, "ORF");
+                }}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-[#182338] hover:bg-[#202f4a] text-rose-300 border border-rose-500/30 transition-colors flex items-center space-x-1"
+              >
+                <span>ORF (Geopolitics)</span>
               </button>
             </div>
           </div>
@@ -1211,7 +1357,9 @@ export const NewsView: React.FC<NewsViewProps> = ({
                   }`}
                 >
                   <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
-                    <span className="font-semibold text-blue-400">{article.source}</span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${getSourceBadgeClass(article.source)}`}>
+                      {article.source}
+                    </span>
                     <span className="text-[11px]">{article.date}</span>
                   </div>
 
@@ -1251,7 +1399,9 @@ export const NewsView: React.FC<NewsViewProps> = ({
             <div className="space-y-3 border-b border-slate-800 pb-4">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="flex items-center space-x-2">
-                  <span className="text-blue-400 font-bold">{activeArticle.source}</span>
+                  <span className={`text-xs font-bold px-2.5 py-0.5 rounded-lg border ${getSourceBadgeClass(activeArticle.source)}`}>
+                    {activeArticle.source}
+                  </span>
                   {activeArticle.page && (
                     <span className="text-slate-400">• {activeArticle.page}</span>
                   )}

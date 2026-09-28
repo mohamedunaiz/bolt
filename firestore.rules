@@ -78,6 +78,11 @@ service cloud.firestore {
       }
     }
 
+    // Public connectivity health probe
+    match /test/{docId} {
+      allow read: if true;
+    }
+
     // Public / verified daily current affairs and published MCQs (read-only for students, admin-only write)
     match /current_affairs/{articleId} {
       allow read: if true;

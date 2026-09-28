@@ -1,5 +1,5 @@
 // Bolt UPSC - Offline Service Worker
-const CACHE_NAME = "bolt-upsc-shell-v1";
+const CACHE_NAME = "bolt-upsc-shell-v2";
 const DATA_CACHE_NAME = "bolt-upsc-data-v1";
 
 const PRECACHE_ASSETS = [
