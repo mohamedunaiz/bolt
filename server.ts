@@ -1467,13 +1467,15 @@ app.get("/api/news/daily-current-affairs", authenticateToken, async (_req, res) 
         if (ingestionResult.articles && ingestionResult.articles.length > 0) {
           snapshot = {
             articles: ingestionResult.articles,
-            mcqs: snapshot.mcqs && snapshot.mcqs.length > 0 ? snapshot.mcqs : [],
+            mcqs: generateDailyCurrentAffairsMCQs(ingestionResult.articles, 5),
             updatedAt: ingestionResult.updatedAt,
           };
         }
       } catch (ingestErr: any) {
         console.warn("[CURRENT-AFFAIRS] Automated ingestion attempt notice:", ingestErr?.message);
       }
+    } else if (!snapshot.mcqs || snapshot.mcqs.length === 0) {
+      snapshot.mcqs = generateDailyCurrentAffairsMCQs(snapshot.articles, 5);
     }
 
     const sources = [...new Set(snapshot.articles.map((article) => article.source).filter(Boolean))];
