@@ -112,8 +112,8 @@ export const DailyNewsDashboardSection: React.FC<DailyNewsDashboardSectionProps>
         ))}
       </div>
 
-      {/* Main Feature News Card (Matching the Photo Uploaded) */}
-      {activeArticle && (
+      {/* Main Feature News Card or Empty State */}
+      {activeArticle ? (
         <div className="bg-[#141d2d] rounded-2xl border border-slate-800 p-5 space-y-4">
           {/* Metadata Row: Source, Date, GSTags & Bookmark */}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -301,6 +301,20 @@ export const DailyNewsDashboardSection: React.FC<DailyNewsDashboardSectionProps>
               <ExternalLink className="w-3 h-3" />
             </button>
           </div>
+        </div>
+      ) : (
+        <div className="bg-[#141d2d] rounded-2xl border border-slate-800 p-8 text-center space-y-3">
+          <Newspaper className="w-10 h-10 text-slate-500 mx-auto" />
+          <h4 className="font-bold text-white text-sm">Today's Current Affairs Loading...</h4>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            Fresh articles from The Hindu, PIB, and The Indian Express are being synchronized. You can also view or refresh them in the News tab.
+          </p>
+          <button
+            onClick={() => onNavigate("news")}
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors"
+          >
+            Open News Tab
+          </button>
         </div>
       )}
     </div>

@@ -37,7 +37,7 @@ import {
   UserFullProgressData,
 } from "./types";
 import { DEFAULT_ACTIVE_MODEL_CONFIG } from "./data/modelsData";
-import { loadUserProgress, saveUserProgress, logoutAccount, subscribeToAuthState, getCleanSyllabus, getCleanTimetableSlots } from "./services/userService";
+import { loadUserProgress, saveUserProgress, logoutAccount, subscribeToAuthState, getCleanSyllabus, getCleanTimetableSlots, getAuthHeader } from "./services/userService";
 import { cacheSyllabusOffline, cacheTimetableOffline, flushOfflineQueue } from "./services/offlineSyncService";
 import { OfflineStatusIndicator } from "./components/OfflineStatusIndicator";
 import { ScrollToTopButton } from "./components/ScrollToTopButton";
@@ -280,6 +280,32 @@ export default function App() {
     cacheSyllabusOffline(topics);
     cacheTimetableOffline(timetableSlots);
     flushOfflineQueue(targetId);
+
+    // 4. Fetch daily current affairs if not already loaded in state
+    (async () => {
+      try {
+        const headers = await getAuthHeader();
+        const res = await fetch("/api/news/daily-current-affairs", {
+          headers: { Accept: "application/json", ...headers },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.articles) && data.articles.length > 0) {
+            setArticles((prev) => {
+              if (prev.length === 0) {
+                try {
+                  localStorage.setItem("bolt_news_articles", JSON.stringify(data.articles));
+                } catch {}
+                return data.articles;
+              }
+              return prev;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Initial current affairs fetch notice:", err);
+      }
+    })();
 
     return () => unsubscribe();
   }, []);
