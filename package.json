@@ -12,7 +12,7 @@
     "dev": "tsx server.ts",
     "electron:compile": "tsc -p tsconfig.electron.json && node scripts/prepare-electron-dist.mjs",
     "desktop:dev": "concurrently -k \"npm:dev\" \"npm run electron:compile && cross-env BOLT_APP_URL=http://localhost:3000 electron .\"",
-    "desktop:build": "npm run desktop:build",
+    "desktop:build": "npm run electron:compile",
     "desktop:package": "npm run desktop:build && electron-builder --dir --config build/electron-builder.yml",
     "desktop:dist": "npm run desktop:build && electron-builder --config build/electron-builder.yml",
     "desktop:installer": "npm run desktop:dist -- --win nsis",
