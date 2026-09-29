@@ -399,6 +399,72 @@ export function isGeminiKeyDenied(customApiKey?: string): boolean {
   return false;
 }
 
+/**
+ * Safely extracts and parses the first balanced JSON object from an LLM response,
+ * ignoring markdown fences, trailing commentary, or multiple concatenated JSON objects.
+ */
+export function parseFirstJsonObject<T = any>(rawText: string): T | null {
+  if (!rawText || typeof rawText !== "string") return null;
+
+  const stripped = rawText
+    .replace(/^[\s\S]*?```(?:json)?\s*/i, (m) => (m.includes("```") ? "" : m))
+    .replace(/\s*```[\s\S]*$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(stripped) as T;
+  } catch {}
+
+  const startIdx = rawText.indexOf("{");
+  if (startIdx === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = startIdx; i < rawText.length; i++) {
+    const ch = rawText[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      if (inString) escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === "{") {
+        depth++;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          const candidate = rawText.slice(startIdx, i + 1);
+          try {
+            return JSON.parse(candidate) as T;
+          } catch {
+            try {
+              const cleaned = candidate.replace(/,\s*([}\]])/g, "$1");
+              return JSON.parse(cleaned) as T;
+            } catch {
+              const nextStart = rawText.indexOf("{", startIdx + 1);
+              if (nextStart !== -1) {
+                return parseFirstJsonObject<T>(rawText.slice(nextStart));
+              }
+              return null;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 export function getGeminiClient(customApiKey?: string): GoogleGenAI | null {
   const apiKey = (customApiKey && customApiKey.trim()) || process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
@@ -1549,14 +1615,7 @@ export class BoltAIGateway {
         const text = res.text || "";
         let parsedJson = undefined;
         if (request.responseFormat === "json") {
-          const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-          if (match) {
-            try {
-              parsedJson = JSON.parse(match[0]);
-            } catch {
-              // Ignore parse error
-            }
-          }
+          parsedJson = parseFirstJsonObject(text) ?? undefined;
         }
 
         return {
@@ -1687,9 +1746,8 @@ Return ONLY valid JSON matching this exact structure:
         }
 
         if (rawJson) {
-          const jsonMatch = rawJson.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
+          const parsed = parseFirstJsonObject(rawJson);
+          if (parsed && typeof parsed === "object") {
             const crit = parsed.criteria || {};
             const sum = Object.values(crit).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
             const score = Math.min(15, Math.round(Number(sum) * 10) / 10);

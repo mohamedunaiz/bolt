@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { NewsArticle, PrelimsQuestion } from "../src/types";
 import { fetchAndParseRssFeed, POPULAR_UPSC_FEEDS } from "./rssService";
-import { getGeminiClient, executeGeminiWithFailover } from "./aiGateway";
+import { getGeminiClient, executeGeminiWithFailover, parseFirstJsonObject } from "./aiGateway";
 import { initFirebaseAdmin, getAdminFirestore } from "./firebaseAdmin";
 
 /**
@@ -599,10 +599,11 @@ Return ONLY valid JSON with this exact schema:
     );
 
     const rawText = result.text || "";
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
+    const parsed = parseFirstJsonObject(rawText);
+    if (!parsed || typeof parsed !== "object" || !parsed.questionText || !Array.isArray(parsed.options)) {
+      return null;
+    }
 
-    const parsed = JSON.parse(jsonMatch[0]);
     const gsTag = art.gsTags[0] || "GS 2: Polity";
     const subject = gsTag.includes("GS 1")
       ? "Modern History & Geography"

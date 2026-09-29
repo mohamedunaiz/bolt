@@ -40,7 +40,7 @@ import {
   KnowledgeChunk,
 } from "./server/ragService";
 import { computeTopicDiagnostic } from "./server/knowledgeScoring";
-import { BoltAIGateway, getGatewayConfig, updateGatewayConfig, executeGeminiWithFailover, getGeminiClient } from "./server/aiGateway";
+import { BoltAIGateway, getGatewayConfig, updateGatewayConfig, executeGeminiWithFailover, getGeminiClient, parseFirstJsonObject } from "./server/aiGateway";
 import { StudentIntelligenceEngine, CANONICAL_TOPIC_GRAPH } from "./server/studentIntelligence";
 import { BoltAgentRuntime } from "./server/boltAgentRuntime";
 import { ModelPlatformService } from "./server/modelPlatform";
@@ -338,9 +338,8 @@ Return ONLY valid JSON matching this exact structure:
         );
 
         const text = geminiRes.text || "";
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
+        const parsed = parseFirstJsonObject(text);
+        if (parsed && typeof parsed === "object" && parsed.questionText) {
           return res.json({ success: true, mcq: parsed });
         }
       } catch (geminiErr: any) {
