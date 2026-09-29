@@ -103,6 +103,13 @@ export interface UpscPyqItem {
   practiceDrillPrompt: string;
   historicalContext?: string;
   relatedConcept?: string;
+  // Normalized structured dataset fields
+  exam?: string;
+  subject?: string;
+  question?: string;
+  source?: string;
+  answer?: string;
+  keywords?: string[];
 }
 
 export interface RecurringThemeAnalysis {
@@ -128,9 +135,13 @@ export interface PyqSearchFilter {
   subject?: string;
   topic?: string;
   subtopic?: string;
+  difficulty?: string;
+  questionType?: string;
   tier?: VerificationTier | "ALL" | "VERIFIED_ONLY";
   recurringThemeId?: string;
   searchQuery?: string;
+  page?: number;
+  limit?: number;
 }
 
 // ============================================================================
@@ -1139,6 +1150,61 @@ export const RECURRING_THEME_ANALYTICS: RecurringThemeAnalysis[] = [
 // 6. PUBLIC QUERY METHODS
 // ============================================================================
 
+export function enrichPyqItem(item: UpscPyqItem): UpscPyqItem {
+  const answer =
+    item.answer ||
+    item.explanation ||
+    (item.modelAnswerFramework
+      ? [
+          item.modelAnswerFramework.introduction,
+          ...(item.modelAnswerFramework.bodyPoints || []),
+          item.modelAnswerFramework.wayForward,
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : "");
+
+  const keywords =
+    item.keywords ||
+    Array.from(
+      new Set([
+        ...(item.linkedCurrentAffairsTags || []),
+        ...(item.relatedThinkers || []),
+        ...(item.constitutionalArticles || []),
+        item.topic,
+      ].filter(Boolean))
+    );
+
+  return {
+    ...item,
+    exam: item.exam || (item.year >= 1950 ? "UPSC CSE" : "ICS Historical Archive"),
+    subject: item.subject || item.syllabusMapping?.subject || item.unit,
+    question: item.question || item.questionText,
+    source: item.source || (item.verification.verified ? "UPSC" : item.verification.source),
+    answer,
+    keywords,
+  };
+}
+
+function normalizePaperCode(raw: string): string {
+  const clean = raw.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (clean === "gs1" || clean === "generalstudies1" || clean === "gspaper1") return "gs 1";
+  if (clean === "gs2" || clean === "generalstudies2" || clean === "gspaper2") return "gs 2";
+  if (clean === "gs3" || clean === "generalstudies3" || clean === "gspaper3") return "gs 3";
+  if (clean === "gs4" || clean === "generalstudies4" || clean === "gspaper4") return "gs 4";
+  if (clean === "pa1" || clean === "pubadmin1" || clean === "pubadminpaper1") return "pubadmin paper 1";
+  if (clean === "pa2" || clean === "pubadmin2" || clean === "pubadminpaper2") return "pubadmin paper 2";
+  return raw.trim().toLowerCase();
+}
+
+function normalizeDifficulty(raw: string): string {
+  const clean = raw.trim().toLowerCase();
+  if (clean === "moderate" || clean === "medium") return "medium";
+  if (clean === "easy") return "easy";
+  if (clean === "hard" || clean === "difficult") return "hard";
+  return clean;
+}
+
 export function searchUpscPyqs(filter?: PyqSearchFilter): UpscPyqItem[] {
   let list: UpscPyqItem[];
 
@@ -1147,36 +1213,40 @@ export function searchUpscPyqs(filter?: PyqSearchFilter): UpscPyqItem[] {
   } else if (filter?.tier === "ALL") {
     list = [...UPSC_PYQ_REPOSITORY, ...BOLT_PRACTICE_QUESTIONS];
   } else {
-    // Default: Strictly verified questions only
+    // Default: Strictly verified questions only — never present fabricated/practice items as PYQs
     list = [...UPSC_PYQ_REPOSITORY];
     if (filter?.tier && filter.tier !== "VERIFIED_ONLY") {
       list = list.filter((p) => p.verification.tier === filter.tier);
     }
   }
 
+  list = list.map(enrichPyqItem);
+
   if (!filter) return list.sort((a, b) => b.year - a.year);
 
   if (filter.stage && filter.stage !== "All") {
-    list = list.filter((p) => p.stage === filter.stage);
+    const stg = filter.stage.toLowerCase();
+    list = list.filter((p) => p.stage.toLowerCase() === stg);
   }
 
   if (filter.paper && filter.paper !== "All") {
-    list = list.filter((p) => p.paper === filter.paper);
+    const normPaper = normalizePaperCode(filter.paper);
+    list = list.filter((p) => normalizePaperCode(p.paper) === normPaper || p.paper.toLowerCase().includes(normPaper));
   }
 
   if (filter.year) {
-    list = list.filter((p) => p.year === filter.year);
+    list = list.filter((p) => p.year === Number(filter.year));
   }
 
   if (filter.yearStart) {
-    list = list.filter((p) => p.year >= filter.yearStart!);
+    list = list.filter((p) => p.year >= Number(filter.yearStart));
   }
 
   if (filter.yearEnd) {
-    list = list.filter((p) => p.year <= filter.yearEnd!);
+    list = list.filter((p) => p.year <= Number(filter.yearEnd));
   }
 
-  if (filter.subject && filter.subject.trim()) {
+  if (filter.subject && filter.subject.trim() && filter.subject !== "All") {
     const s = filter.subject.toLowerCase().trim();
     list = list.filter(
       (p) =>
@@ -1206,6 +1276,16 @@ export function searchUpscPyqs(filter?: PyqSearchFilter): UpscPyqItem[] {
     );
   }
 
+  if (filter.difficulty && filter.difficulty !== "All") {
+    const diff = normalizeDifficulty(filter.difficulty);
+    list = list.filter((p) => normalizeDifficulty(p.difficulty) === diff);
+  }
+
+  if (filter.questionType && filter.questionType !== "All") {
+    const qt = filter.questionType.toLowerCase().trim();
+    list = list.filter((p) => p.questionType.toLowerCase().includes(qt));
+  }
+
   if (filter.recurringThemeId) {
     list = list.filter((p) => p.recurringThemeId === filter.recurringThemeId);
   }
@@ -1218,11 +1298,46 @@ export function searchUpscPyqs(filter?: PyqSearchFilter): UpscPyqItem[] {
         p.topic.toLowerCase().includes(q) ||
         p.subtopic.toLowerCase().includes(q) ||
         p.verification.source.toLowerCase().includes(q) ||
-        (p.recurringThemeLabel && p.recurringThemeLabel.toLowerCase().includes(q))
+        (p.recurringThemeLabel && p.recurringThemeLabel.toLowerCase().includes(q)) ||
+        (p.keywords && p.keywords.some((k) => k.toLowerCase().includes(q)))
     );
   }
 
-  return list.sort((a, b) => b.year - a.year);
+  const sorted = list.sort((a, b) => b.year - a.year);
+
+  if (filter.page !== undefined || filter.limit !== undefined) {
+    const page = Math.max(1, Number(filter.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(filter.limit) || 20));
+    const start = (page - 1) * limit;
+    return sorted.slice(start, start + limit);
+  }
+
+  return sorted;
+}
+
+export function searchUpscPyqsPaginated(filter?: PyqSearchFilter): {
+  items: UpscPyqItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+} {
+  const { page: rawPage, limit: rawLimit, ...baseFilter } = filter || {};
+  const allMatches = searchUpscPyqs(baseFilter);
+  const page = Math.max(1, Number(rawPage) || 1);
+  const limit = Math.max(1, Math.min(100, Number(rawLimit) || 20));
+  const total = allMatches.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const start = (page - 1) * limit;
+  const items = allMatches.slice(start, start + limit);
+
+  return {
+    items,
+    total,
+    page,
+    limit,
+    totalPages,
+  };
 }
 
 export function getRecurringThemeAnalytics(): RecurringThemeAnalysis[] {
@@ -1231,8 +1346,9 @@ export function getRecurringThemeAnalytics(): RecurringThemeAnalysis[] {
 
 export function getPyqById(id: string): UpscPyqItem | null {
   const found = UPSC_PYQ_REPOSITORY.find((p) => p.id === id);
-  if (found) return found;
-  return BOLT_PRACTICE_QUESTIONS.find((p) => p.id === id) || null;
+  if (found) return enrichPyqItem(found);
+  const practice = BOLT_PRACTICE_QUESTIONS.find((p) => p.id === id);
+  return practice ? enrichPyqItem(practice) : null;
 }
 
 export function getTopicPyqIntelligence(topicName: string): {

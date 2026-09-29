@@ -138,10 +138,25 @@ async function runAcceptanceSuite() {
       "According to Chester Barnard in 'The Functions of the Executive', authority is subjective and resides in the person to whom it is addressed. For authority to be effective, an order must fall within the subordinate's Zone of Indifference. In Indian civil services, public servants comply more readily when administrative directives are perceived as legitimate and rational.";
 
     const evalRes = await BoltAIGateway.evaluate(rubric, answer);
-    const passed = evalRes.score > 0 && evalRes.score <= 15 && evalRes.whatWentWell.length > 0;
+    const has7Dimensions =
+      Boolean(evalRes.dimensions) &&
+      typeof evalRes.dimensions?.introduction === "number" &&
+      typeof evalRes.dimensions?.content === "number" &&
+      typeof evalRes.dimensions?.analysis === "number" &&
+      typeof evalRes.dimensions?.structure === "number" &&
+      typeof evalRes.dimensions?.examples === "number" &&
+      typeof evalRes.dimensions?.conclusion === "number" &&
+      typeof evalRes.dimensions?.presentation === "number";
+    const passed =
+      evalRes.score > 0 &&
+      evalRes.score <= 15 &&
+      evalRes.whatWentWell.length > 0 &&
+      has7Dimensions &&
+      Array.isArray(evalRes.weakAreas) &&
+      Array.isArray(evalRes.revisionQueue);
     return {
       passed,
-      message: `Scored ${evalRes.score}/15. Identified ${evalRes.whatWentWell.length} strengths and ${evalRes.needsImprovement.length} improvements.`,
+      message: `Scored ${evalRes.score}/15 across 7 deterministic dimensions. Weak areas: ${evalRes.weakAreas?.length || 0}, Revision queue: ${evalRes.revisionQueue?.length || 0}.`,
     };
   });
 
@@ -212,10 +227,23 @@ async function runAcceptanceSuite() {
   // STEP 10: PYQ Search & Topic Mapping
   await recordStep(10, "UPSC PYQ Database Search & Topic Taxonomy", async () => {
     const pyqs = searchUpscPyqs({ paper: "PubAdmin Paper 1" });
-    const passed = pyqs.length >= 3;
+    const gs2Pyqs = searchUpscPyqs({ paper: "GS2" });
+    const sample = pyqs[0];
+    const hasStructuredFields = Boolean(
+      sample &&
+      sample.exam &&
+      sample.year &&
+      sample.paper &&
+      sample.subject &&
+      sample.topic &&
+      sample.question &&
+      sample.answer &&
+      Array.isArray(sample.keywords)
+    );
+    const passed = pyqs.length >= 3 && gs2Pyqs.length >= 1 && hasStructuredFields;
     return {
       passed,
-      message: `Found ${pyqs.length} PYQs mapped to PubAdmin Paper 1 with year and marks tagging.`,
+      message: `Found ${pyqs.length} PubAdmin Paper 1 PYQs and ${gs2Pyqs.length} GS2 PYQs with structured dataset fields (exam, year, paper, subject, topic, difficulty, questionType, answer, keywords).`,
     };
   });
 

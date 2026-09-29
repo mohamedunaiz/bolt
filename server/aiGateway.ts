@@ -107,6 +107,7 @@ export interface EvaluationRubric {
   maxMarks: number;
   questionText: string;
   subject: string;
+  previousEvaluations?: any[];
   modelOverride?: string;
   providerOverride?: string;
   apiKeyOverride?: string;
@@ -117,6 +118,17 @@ export interface EvaluationRubric {
 export interface MainsEvaluationResult {
   score: number;
   maxMarks: number;
+  questionAnalysis?: string;
+  demandIdentification?: string[];
+  dimensions?: {
+    introduction: number;
+    content: number;
+    analysis: number;
+    structure: number;
+    examples: number;
+    conclusion: number;
+    presentation: number;
+  };
   criteria: {
     questionDemand: number;
     content: number;
@@ -124,6 +136,7 @@ export interface MainsEvaluationResult {
     analysis: number;
     examples: number;
     conclusion: number;
+    presentation?: number;
     introductionScore: number;
     conceptualClarityScore: number;
     contentDemandScore: number;
@@ -131,11 +144,14 @@ export interface MainsEvaluationResult {
     examplesAndThinkersScore: number;
     structureScore: number;
     conclusionScore: number;
+    presentationScore?: number;
   };
   whatWentWell: string[];
   needsImprovement: string[];
+  weakAreas?: string[];
   missingDimensions: string[];
   repeatedWeaknesses: string[];
+  revisionQueue?: Array<{ topic: string; priority: "high" | "medium"; nextReviewDays: number }>;
   boltFeedback: string;
   modelAnswerOutline?: string[];
   providerUsed: string;
@@ -394,7 +410,7 @@ export function getGeminiClient(customApiKey?: string): GoogleGenAI | null {
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
-      headers: { "User-Agent": "aistudio-bolt-ai-gateway" },
+      headers: { "User-Agent": "aistudio-build" },
     },
   });
 }
@@ -1678,28 +1694,66 @@ Return ONLY valid JSON matching this exact structure:
             const sum = Object.values(crit).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
             const score = Math.min(15, Math.round(Number(sum) * 10) / 10);
 
+            const introScore = Number(crit.introductionScore) || 1.0;
+            const clarityScore = Number(crit.conceptualClarityScore) || 1.4;
+            const demandScore = Number(crit.contentDemandScore) || 2.6;
+            const analysisScore = Number(crit.analysisScore) || 1.3;
+            const examplesScore = Number(crit.examplesAndThinkersScore) || 1.0;
+            const structureScore = Number(crit.structureScore) || 0.7;
+            const conclusionScore = Number(crit.conclusionScore) || 0.7;
+            const presentationScore = Number(crit.presentationScore) || structureScore;
+
+            const needsImprovement: string[] = parsed.needsImprovement || ["Include more administrative thinkers", "Deepen analytical critique"];
+            const historicalWeaknesses = detectRepeatedWeaknesses(needsImprovement, rubric.previousEvaluations);
+
             return {
               score,
               maxMarks: 15,
+              questionAnalysis: parsed.questionAnalysis || `Core UPSC Mains demand for ${rubric.subject}: "${rubric.questionText}"`,
+              demandIdentification: parsed.demandIdentification || [
+                "Contextualize constitutional/administrative premise in introduction",
+                "Address directive word with multidimensional arguments",
+                "Substantiate with thinkers, committees (2nd ARC), and case laws",
+                "Conclude with pragmatic way forward",
+              ],
+              dimensions: {
+                introduction: introScore,
+                content: demandScore,
+                analysis: analysisScore,
+                structure: structureScore,
+                examples: examplesScore,
+                conclusion: conclusionScore,
+                presentation: presentationScore,
+              },
               criteria: {
-                questionDemand: Math.round(((crit.contentDemandScore || 2.5) / 4) * 10),
-                content: Math.round(((crit.conceptualClarityScore || 1.3) / 2) * 10),
-                structure: Math.round((crit.structureScore || 0.7) * 10),
-                analysis: Math.round(((crit.analysisScore || 1.2) / 2) * 10),
-                examples: Math.round(((crit.examplesAndThinkersScore || 1.0) / 1.5) * 10),
-                conclusion: Math.round((crit.conclusionScore || 0.7) * 10),
-                introductionScore: crit.introductionScore || 1.0,
-                conceptualClarityScore: crit.conceptualClarityScore || 1.4,
-                contentDemandScore: crit.contentDemandScore || 2.6,
-                analysisScore: crit.analysisScore || 1.3,
-                examplesAndThinkersScore: crit.examplesAndThinkersScore || 1.0,
-                structureScore: crit.structureScore || 0.7,
-                conclusionScore: crit.conclusionScore || 0.7,
+                questionDemand: Math.round((demandScore / 4) * 10),
+                content: Math.round((clarityScore / 2) * 10),
+                structure: Math.round(structureScore * 10),
+                analysis: Math.round((analysisScore / 2) * 10),
+                examples: Math.round((examplesScore / 1.5) * 10),
+                conclusion: Math.round(conclusionScore * 10),
+                presentation: Math.round(presentationScore * 10),
+                introductionScore: introScore,
+                conceptualClarityScore: clarityScore,
+                contentDemandScore: demandScore,
+                analysisScore: analysisScore,
+                examplesAndThinkersScore: examplesScore,
+                structureScore: structureScore,
+                conclusionScore: conclusionScore,
+                presentationScore,
               },
               whatWentWell: parsed.whatWentWell || ["Good structure", "Direct addressing of question demand"],
-              needsImprovement: parsed.needsImprovement || ["Include more administrative thinkers", "Deepen analytical critique"],
+              needsImprovement,
+              weakAreas: needsImprovement,
               missingDimensions: parsed.missingDimensions || ["Constitutional reality comparison", "2nd ARC recommendations"],
-              repeatedWeaknesses: parsed.repeatedWeaknesses || ["Descriptive without analytical depth"],
+              repeatedWeaknesses: historicalWeaknesses.length > 0 ? historicalWeaknesses : (parsed.repeatedWeaknesses || ["Descriptive without analytical depth"]),
+              revisionQueue: [
+                {
+                  topic: `${rubric.subject}: ${rubric.questionText.slice(0, 60)}`,
+                  priority: score < 8 ? "high" : "medium",
+                  nextReviewDays: score < 8 ? 1 : 3,
+                },
+              ],
               boltFeedback: parsed.boltFeedback || "Solid answer with good potential. Strengthen thinker citations to cross 10/15.",
               modelAnswerOutline: parsed.modelAnswerOutline || [],
               providerUsed: usedProviderLabel || "AI Evaluator",
@@ -1717,6 +1771,32 @@ Return ONLY valid JSON matching this exact structure:
   }
 }
 
+function detectRepeatedWeaknesses(currentWeaknesses: string[], previousEvaluations?: any[]): string[] {
+  if (!Array.isArray(previousEvaluations) || previousEvaluations.length === 0) {
+    return currentWeaknesses.slice(0, 2);
+  }
+  const priorText = previousEvaluations
+    .flatMap((ev) => [
+      ...(Array.isArray(ev?.needsImprovement) ? ev.needsImprovement : []),
+      ...(Array.isArray(ev?.weakAreas) ? ev.weakAreas : []),
+      ...(Array.isArray(ev?.repeatedWeaknesses) ? ev.repeatedWeaknesses : []),
+    ])
+    .join(" ")
+    .toLowerCase();
+
+  const repeated: string[] = [];
+  if (priorText.includes("thinker") || currentWeaknesses.some((w) => w.toLowerCase().includes("thinker"))) {
+    repeated.push("Recurring deficit in administrative thinker & 2nd ARC citations across answers");
+  }
+  if (priorText.includes("structure") || priorText.includes("heading")) {
+    repeated.push("Recurring structural weakness: needs clearer sub-headings and bulleted dimensions");
+  }
+  if (priorText.includes("conclusion") || priorText.includes("way forward")) {
+    repeated.push("Recurring weakness in concluding with actionable policy way forward");
+  }
+  return repeated.length > 0 ? repeated : currentWeaknesses.slice(0, 2);
+}
+
 function evaluateRuleBasedMains(
   rubric: EvaluationRubric,
   answer: string
@@ -1725,9 +1805,30 @@ function evaluateRuleBasedMains(
   const wordCount = answer.split(/\s+/).filter(Boolean).length;
 
   if (wordCount < 15) {
+    const needsImprovement = [
+      "Severe content deficiency: Word count is critically below the 150-250 word UPSC standard",
+      "No thinker grounding or conceptual elaboration",
+      "Lacks structure, arguments, and balanced conclusion",
+    ];
     return {
       score: 1.8,
       maxMarks: 15,
+      questionAnalysis: `Core UPSC Mains demand for ${rubric.subject}: "${rubric.questionText}"`,
+      demandIdentification: [
+        "Define core concept in introduction (25-30 words)",
+        "Provide multidimensional body arguments (150+ words)",
+        "Cite administrative thinkers, committees, or constitutional articles",
+        "Conclude with a balanced way forward",
+      ],
+      dimensions: {
+        introduction: 0.3,
+        content: 0.4,
+        analysis: 0.2,
+        structure: 0.2,
+        examples: 0.2,
+        conclusion: 0.2,
+        presentation: 0.2,
+      },
       criteria: {
         questionDemand: 1,
         content: 1,
@@ -1735,6 +1836,7 @@ function evaluateRuleBasedMains(
         analysis: 1,
         examples: 1,
         conclusion: 1,
+        presentation: 1,
         introductionScore: 0.3,
         conceptualClarityScore: 0.3,
         contentDemandScore: 0.4,
@@ -1742,19 +1844,24 @@ function evaluateRuleBasedMains(
         examplesAndThinkersScore: 0.2,
         structureScore: 0.2,
         conclusionScore: 0.2,
+        presentationScore: 0.2,
       },
       whatWentWell: ["Attempted response recorded"],
-      needsImprovement: [
-        "Severe content deficiency: Word count is critically below the 150-250 word UPSC standard",
-        "No thinker grounding or conceptual elaboration",
-        "Lacks structure, arguments, and balanced conclusion",
-      ],
+      needsImprovement,
+      weakAreas: needsImprovement,
       missingDimensions: [
         "Core theoretical framework",
         "Substantive examples & 2nd ARC recommendations",
         "Pragmatic way forward",
       ],
-      repeatedWeaknesses: ["Empty or superficial answer submitted"],
+      repeatedWeaknesses: detectRepeatedWeaknesses(["Empty or superficial answer submitted"], rubric.previousEvaluations),
+      revisionQueue: [
+        {
+          topic: `${rubric.subject}: ${rubric.questionText.slice(0, 60)}`,
+          priority: "high",
+          nextReviewDays: 1,
+        },
+      ],
       boltFeedback:
         "Severe content deficiency detected. This answer contains fewer than 15 words. A 15-mark UPSC Mains question requires 250 words with rigorous theoretical grounding, empirical administrative examples, and a balanced conclusion.",
       modelAnswerOutline: [
@@ -1774,6 +1881,7 @@ function evaluateRuleBasedMains(
   let examples = 0.8;
   let structure = 0.7;
   let conclusion = 0.6;
+  let presentation = answer.includes("\n") || answer.includes("-") || answer.includes("1.") ? 0.85 : 0.65;
 
   const thinkers = ["weber", "taylor", "fayol", "simon", "barnard", "follett", "riggs", "waldo"];
   const thinkerHits = thinkers.filter((t) => lower.includes(t)).length;
@@ -1795,10 +1903,31 @@ function evaluateRuleBasedMains(
   }
 
   const total = Math.min(15, Math.round((intro + clarity + demand + analysis + examples + structure + conclusion) * 10) / 10);
+  const needsImprovement = [
+    thinkerHits === 0 ? "Anchor arguments in classical or modern administrative thinkers (Simon, Weber, Barnard)" : "Substantiate with Paper 2 Indian administrative case laws",
+    "Structure into distinct sub-headings with bulleted dimensions for examiner readability",
+  ];
+  const repeatedWeaknesses = detectRepeatedWeaknesses(needsImprovement, rubric.previousEvaluations);
 
   return {
     score: total,
     maxMarks: 15,
+    questionAnalysis: `Core UPSC Mains demand for ${rubric.subject}: "${rubric.questionText}"`,
+    demandIdentification: [
+      "Contextualize the theoretical/constitutional premise in the introduction",
+      "Address core question directive with multi-dimensional analysis",
+      "Substantiate with thinkers, 2nd ARC reports, and Supreme Court judgments",
+      "Provide a forward-looking administrative conclusion",
+    ],
+    dimensions: {
+      introduction: intro,
+      content: demand,
+      analysis,
+      structure,
+      examples,
+      conclusion,
+      presentation,
+    },
     criteria: {
       questionDemand: Math.round((demand / 4) * 10),
       content: Math.round((clarity / 2) * 10),
@@ -1806,6 +1935,7 @@ function evaluateRuleBasedMains(
       analysis: Math.round((analysis / 2) * 10),
       examples: Math.round((examples / 1.5) * 10),
       conclusion: Math.round(conclusion * 10),
+      presentation: Math.round(presentation * 10),
       introductionScore: intro,
       conceptualClarityScore: clarity,
       contentDemandScore: demand,
@@ -1813,20 +1943,26 @@ function evaluateRuleBasedMains(
       examplesAndThinkersScore: examples,
       structureScore: structure,
       conclusionScore: conclusion,
+      presentationScore: presentation,
     },
     whatWentWell: [
       wordCount >= 150 ? "Substantial word length matching 10/15 marker requirements" : "Direct response tone",
       thinkerHits > 0 ? `Good grounding with thinker references (${thinkerHits} identified)` : "Clear initial premise",
     ],
-    needsImprovement: [
-      thinkerHits === 0 ? "Anchor arguments in classical or modern administrative thinkers (Simon, Weber, Barnard)" : "Substantiate with Paper 2 Indian administrative case laws",
-      "Structure into distinct sub-headings with bulleted dimensions for examiner readability",
-    ],
+    needsImprovement,
+    weakAreas: needsImprovement,
     missingDimensions: [
       "2nd ARC Report recommendations (e.g. 4th report on Ethics or 10th report on Personnel)",
       "Constitutional provisions and Supreme Court doctrine comparisons",
     ],
-    repeatedWeaknesses: ["Tends to be descriptive; convert factual narratives into analytical trade-offs"],
+    repeatedWeaknesses,
+    revisionQueue: [
+      {
+        topic: `${rubric.subject}: ${rubric.questionText.slice(0, 60)}`,
+        priority: total < 8.5 ? "high" : "medium",
+        nextReviewDays: total < 8.5 ? 1 : 3,
+      },
+    ],
     boltFeedback: `Evaluated on the 7-dimension UPSC Public Administration standard. Your answer demonstrates understanding of "${rubric.questionText.slice(0, 45)}...". To push your score from ${total} to 11+, integrate specific commissions (Sarkaria/Punchhi/2nd ARC) and synthesize theoretical models with contemporary governance challenges.`,
     modelAnswerOutline: [
       "Introduction: Define core premise and contemporary relevance (30 words)",

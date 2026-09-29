@@ -525,6 +525,12 @@ export const NewsView: React.FC<NewsViewProps> = ({
           localStorage.setItem("bolt_news_last_sync", String(now));
         } catch {}
 
+        const sourceNamesList = Array.isArray(data.sources)
+          ? data.sources
+          : Array.isArray(data.publisherSources)
+            ? data.publisherSources
+            : ["The Hindu", "PIB", "The Indian Express", "Down To Earth", "LiveLaw", "PRS"];
+
         if (fresh.length > 0) {
           const merged = [...fresh, ...articles];
           if (onUpdateArticles) {
@@ -535,7 +541,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
           }
           setFeedNotification({
             type: "success",
-            message: `Ingested ${fresh.length} fresh daily current affairs articles from reliable sources (${(data.sources || []).slice(0, 3).join(", ")})!`,
+            message: `Ingested ${fresh.length} fresh daily current affairs articles from reliable sources (${sourceNamesList.slice(0, 3).join(", ")})!`,
           });
         } else if (isManualTrigger) {
           const infoMessage =
@@ -556,7 +562,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
           id: "log-" + Date.now(),
           time: triggerTime,
           added: fresh.length,
-          sources: data.sources || ["The Hindu", "PIB", "The Indian Express", "Down To Earth", "LiveLaw", "PRS"],
+          sources: sourceNamesList,
           status: "success" as const,
           message: fresh.length > 0 ? `Merged ${fresh.length} fresh articles into application state` : "All sources verified; 0 new updates",
         };

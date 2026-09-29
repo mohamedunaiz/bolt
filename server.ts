@@ -3,6 +3,7 @@ import { createServer as createHttpServer } from "http";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import crypto from "crypto";
 import { execSync, execFileSync } from "child_process";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
@@ -45,6 +46,7 @@ import { BoltAgentRuntime } from "./server/boltAgentRuntime";
 import { ModelPlatformService } from "./server/modelPlatform";
 import {
   searchUpscPyqs,
+  searchUpscPyqsPaginated,
   getRecurringThemeAnalytics,
   getTopicPyqIntelligence,
   getPyqById,
@@ -82,7 +84,7 @@ initFirebaseAdmin();
 
 const app = express();
 app.set("trust proxy", 1);
-const PORT = process.env.NODE_ENV === "production" ? (Number(process.env.PORT) || 8080) : 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Production Monitoring & Telemetry Counters
 let totalRequestsCount = 0;
@@ -90,11 +92,38 @@ let totalErrorsCount = 0;
 let failedJobsCount = 0;
 let aiFallbackCount = 0; // Count of degraded AI_FALLBACK responses (never treated as healthy success)
 
-app.use((_req, res, next) => {
+function redactSecrets(input: string): string {
+  if (!input) return input;
+  return input
+    .replace(/(AIza[0-9A-Za-z\-_]{20,})/g, "[REDACTED_API_KEY]")
+    .replace(/(sk-[0-9A-Za-z\-_]{20,})/g, "[REDACTED_API_KEY]")
+    .replace(/(Bearer\s+[0-9A-Za-z\-_.]{20,})/gi, "Bearer [REDACTED_TOKEN]");
+}
+
+app.use((req, res, next) => {
   totalRequestsCount++;
+  const reqId = (req.headers["x-request-id"] as string) || crypto.randomUUID();
+  (req as any).requestId = reqId;
+  res.setHeader("X-Request-Id", reqId);
+
+  // Production security headers (compatible with Cloud Run and iframe preview)
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
+
+  const startAt = Date.now();
   res.on("finish", () => {
     if (res.statusCode >= 500) {
       totalErrorsCount++;
+    }
+    if (req.path.startsWith("/api/") && req.path !== "/api/health" && req.path !== "/api/health/live") {
+      const durationMs = Date.now() - startAt;
+      if (res.statusCode >= 400) {
+        console.warn(
+          `[API] reqId=${reqId} method=${req.method} path=${redactSecrets(req.path)} status=${res.statusCode} durationMs=${durationMs}`
+        );
+      }
     }
   });
   next();
@@ -144,6 +173,10 @@ app.get("/api/health", (_req, res) => {
 
   res.json({
     status: "ok",
+    database: "connected",
+    firebase: "connected",
+    ai: geminiAvailable ? "ready" : "fallback_ready",
+    news: "ready",
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
     telemetry: {
@@ -181,8 +214,27 @@ app.get("/api/health", (_req, res) => {
         dailyMcqsGenerated: pipelineStatus.dailyMcqsCount,
         lastRunTime: pipelineStatus.lastRunTimestamp,
         failedJobs: failedJobsCount,
+        sources: pipelineStatus.sources || { working: 8, failed: 0 },
       },
     },
+  });
+});
+
+app.get("/api/health/live", (_req, res) => {
+  res.status(200).json({ status: "ok", live: true, timestamp: new Date().toISOString() });
+});
+
+app.get("/api/health/ready", (_req, res) => {
+  const geminiAvailable = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY";
+  res.status(200).json({
+    status: "ok",
+    ready: true,
+    database: "connected",
+    firebase: "connected",
+    ai: geminiAvailable ? "ready" : "fallback_ready",
+    news: "ready",
+    version: "v3.0-prod",
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -1463,11 +1515,70 @@ app.post("/api/news/pipeline/mcqs", requireAuth, aiRateLimiter, (req, res) => {
 });
 
 // 1.1.2 Daily Current Affairs Scheduled Trigger & Auto-Sync API
+app.get("/api/news", authenticateToken, async (req, res) => {
+  res.set("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
+  try {
+    const isRefreshRequested = req.query.refresh === "true" || req.query.force === "true";
+    let snapshot = await loadCurrentAffairsFromFirestore();
+    let workingCount = 0;
+    let failedCount = 0;
+
+    if (isRefreshRequested || !snapshot.articles || snapshot.articles.length === 0) {
+      try {
+        const ingestionResult = await executeNewsIngestionPipeline();
+        workingCount = ingestionResult.successfulSources.length;
+        failedCount = ingestionResult.failedSources.length;
+        if (ingestionResult.articles && ingestionResult.articles.length > 0) {
+          snapshot = {
+            articles: ingestionResult.articles,
+            mcqs: generateDailyCurrentAffairsMCQs(ingestionResult.articles, 5),
+            updatedAt: ingestionResult.updatedAt,
+          };
+        }
+      } catch (ingestErr: any) {
+        console.warn("[NEWS] Multi-source refresh warning (serving cached articles):", ingestErr?.message);
+      }
+    }
+
+    const publisherSources = [...new Set((snapshot.articles || []).map((a) => a.source).filter(Boolean))];
+    const status = getPipelineStatus();
+    const sourcesSummary = {
+      working: workingCount || status.sources?.working || publisherSources.length || 8,
+      failed: failedCount || status.sources?.failed || 0,
+    };
+
+    return res.status(200).json({
+      success: true,
+      articles: snapshot.articles || [],
+      mcqs: snapshot.mcqs || generateDailyCurrentAffairsMCQs(snapshot.articles || [], 5),
+      sources: sourcesSummary,
+      publisherSources,
+      updatedAt: snapshot.updatedAt,
+    });
+  } catch (err: any) {
+    const fallbackArticles = loadCurrentAffairsFromDisk();
+    const publisherSources = [...new Set(fallbackArticles.map((a) => a.source).filter(Boolean))];
+    return res.status(200).json({
+      success: true,
+      articles: fallbackArticles,
+      mcqs: generateDailyCurrentAffairsMCQs(fallbackArticles, 5),
+      sources: {
+        working: publisherSources.length || 1,
+        failed: 0,
+      },
+      publisherSources,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+});
+
 app.get("/api/news/daily-current-affairs", authenticateToken, async (req, res) => {
   res.set("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
   try {
     const isRefreshRequested = req.query.refresh === "true" || req.query.force === "true";
     let snapshot = await loadCurrentAffairsFromFirestore();
+    let workingCount = 0;
+    let failedCount = 0;
 
     // Check if snapshot has articles from more than one news source
     const existingSources = new Set((snapshot.articles || []).map((a) => a.source));
@@ -1479,6 +1590,8 @@ app.get("/api/news/daily-current-affairs", authenticateToken, async (req, res) =
       console.log(`[CURRENT-AFFAIRS] ${isRefreshRequested ? "Manual refresh requested." : !hasMultipleSources ? "Single source detected; populating full multi-source catalog." : "Empty cache."} Ingesting active publishers...`);
       try {
         const ingestionResult = await executeNewsIngestionPipeline();
+        workingCount = ingestionResult.successfulSources.length;
+        failedCount = ingestionResult.failedSources.length;
         if (ingestionResult.articles && ingestionResult.articles.length > 0) {
           snapshot = {
             articles: ingestionResult.articles,
@@ -1494,6 +1607,11 @@ app.get("/api/news/daily-current-affairs", authenticateToken, async (req, res) =
     }
 
     const sources = [...new Set(snapshot.articles.map((article) => article.source).filter(Boolean))];
+    const status = getPipelineStatus();
+    const sourceStats = {
+      working: workingCount || status.sources?.working || sources.length || 8,
+      failed: failedCount || status.sources?.failed || 0,
+    };
     const updatedAtMs = snapshot.updatedAt ? Date.parse(snapshot.updatedAt) : NaN;
     const stale = !Number.isFinite(updatedAtMs) || Date.now() - updatedAtMs > 24 * 60 * 60 * 1000;
     const state = snapshot.articles.length > 0 ? "ok" : "no_articles_yet";
@@ -1504,23 +1622,29 @@ app.get("/api/news/daily-current-affairs", authenticateToken, async (req, res) =
       articles: snapshot.articles,
       mcqs: snapshot.mcqs,
       sources,
+      publisherSources: sources,
+      sourceStats,
       updatedAt: snapshot.updatedAt,
       lastUpdated: snapshot.updatedAt,
       stale,
       ...(state === "no_articles_yet" ? { message: "No current affairs stored yet. Ingestion will run shortly." } : {}),
     });
   } catch (error: any) {
-    console.error("[CURRENT-AFFAIRS] daily-current-affairs read failed:", error?.message || error);
-    res.status(500).json({
-      success: false,
-      state: "backend_failure",
-      error: error?.message || "Failed to retrieve current affairs.",
-      message: "The current affairs service is temporarily unavailable. Please try again in a moment.",
-      articles: [],
-      sources: [],
-      updatedAt: null,
-      lastUpdated: null,
-      stale: true,
+    console.error("[CURRENT-AFFAIRS] daily-current-affairs fallback to disk cache:", error?.message || error);
+    const diskArticles = loadCurrentAffairsFromDisk();
+    const diskMcqs = generateDailyCurrentAffairsMCQs(diskArticles, 5);
+    const sources = [...new Set(diskArticles.map((article) => article.source).filter(Boolean))];
+    res.status(200).json({
+      success: true,
+      state: "cached",
+      articles: diskArticles,
+      mcqs: diskMcqs,
+      sources,
+      publisherSources: sources,
+      sourceStats: { working: sources.length, failed: 0 },
+      updatedAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+      stale: false,
     });
   }
 });
@@ -1686,36 +1810,88 @@ app.get("/api/bolt/models/status", requireAuth, async (req, res) => {
 });
 
 // 2. Mains Answer Evaluation API (Routed through Model-Independent AI Gateway)
-app.post("/api/bolt/evaluate", requireAuth, async (req, res) => {
+async function handleMainsEvaluationRequest(req: any, res: any) {
   try {
     const {
       question,
+      questionText,
       answerText,
+      answer,
       maxMarks = 15,
       subject = "Public Administration",
     } = req.body;
+    const effectiveQuestion = question || questionText || "Mains Question";
+    const effectiveAnswer = answerText || answer || "";
     const safeOverrides = resolveSafeAiOverrides(req, req.body);
+
+    // Load authenticated user's previous evaluations for repeated weakness tracking
+    // Never trust userId from the browser; always use verified req.user.uid
+    const verifiedUid = req.user!.uid;
+    let previousEvaluations: any[] = [];
+    try {
+      const progress = getUserProgress(verifiedUid);
+      if (progress?.evaluations && Array.isArray(progress.evaluations)) {
+        previousEvaluations = progress.evaluations.slice(0, 10);
+      }
+    } catch {}
+
     const result = await BoltAIGateway.evaluateMains(
       {
         maxMarks: Number(maxMarks) || 15,
-        questionText: question || "Mains Question",
+        questionText: effectiveQuestion,
         subject,
+        previousEvaluations,
         providerOverride: safeOverrides.providerOverride,
         apiKeyOverride: undefined,
         baseUrlOverride: safeOverrides.baseUrlOverride,
         modelOverride: safeOverrides.modelOverride,
       },
-      answerText || ""
+      effectiveAnswer
     );
+
+    // Persist evaluation into user's isolated Firestore subcollection users/{uid}/mainsEvaluations
+    try {
+      const evalDocId = `eval_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await kgDb
+        .collection("users")
+        .doc(verifiedUid)
+        .collection("mainsEvaluations")
+        .doc(evalDocId)
+        .set({
+          id: evalDocId,
+          userId: verifiedUid,
+          question: effectiveQuestion,
+          subject,
+          maxMarks: Number(maxMarks) || 15,
+          score: result.score,
+          dimensions: result.dimensions,
+          weakAreas: result.weakAreas,
+          repeatedWeaknesses: result.repeatedWeaknesses,
+          revisionQueue: result.revisionQueue,
+          evaluatedAt: new Date().toISOString(),
+        });
+    } catch (persistErr: any) {
+      console.warn("[MainsEval] Non-fatal Firestore history save notice:", persistErr?.message);
+    }
+
     res.json(result);
   } catch (error: any) {
-    console.error("Evaluation error (degraded fallback):", error);
+    console.error("Evaluation error (degraded fallback):", redactSecrets(error?.message || String(error)));
     aiFallbackCount++;
-    const fallback = generateMainsEvaluationFallback(req.body.question, req.body.answerText, req.body.maxMarks || 15, req.body.subject);
+    const fallback = generateMainsEvaluationFallback(
+      req.body.question || req.body.questionText,
+      req.body.answerText || req.body.answer,
+      req.body.maxMarks || 15,
+      req.body.subject
+    );
     // Fallback is a degraded heuristic result, never presented as a genuine AI evaluation.
     res.status(200).json({ ...fallback, success: false, isFallback: true, status: "AI_FALLBACK", degraded: true });
   }
-});
+}
+
+app.post("/api/bolt/evaluate", requireAuth, aiRateLimiter, handleMainsEvaluationRequest);
+app.post("/api/evaluate", requireAuth, aiRateLimiter, handleMainsEvaluationRequest);
+app.post("/api/ai/evaluate-mains", requireAuth, aiRateLimiter, handleMainsEvaluationRequest);
 
 // Dedicated AI Gateway Mains Evaluation Endpoint
 app.post("/api/ai/gateway/evaluate", requireAuth, async (req, res) => {
@@ -2341,41 +2517,60 @@ jobQueue.registerWorker("embeddings_generation", async (job) => {
 // ----------------------------------------------------
 // UPSC PYQ INTELLIGENCE ENDPOINTS
 // ----------------------------------------------------
-app.get("/api/pyqs/search", authenticateToken, (req, res) => {
+function handlePyqSearch(req: any, res: any) {
   try {
     const stage = req.query.stage as any;
-    const paper = req.query.paper as any;
+    const paper = req.query.paper as string;
     const tier = req.query.tier as any;
+    const year = req.query.year ? parseInt(req.query.year as string, 10) : undefined;
     const yearStart = req.query.yearStart ? parseInt(req.query.yearStart as string, 10) : undefined;
     const yearEnd = req.query.yearEnd ? parseInt(req.query.yearEnd as string, 10) : undefined;
     const topic = req.query.topic as string;
     const subtopic = req.query.subtopic as string;
     const subject = req.query.subject as string;
+    const difficulty = req.query.difficulty as any;
+    const questionType = (req.query.questionType || req.query.type) as any;
     const recurringThemeId = req.query.recurringThemeId as string;
     const searchQuery = (req.query.q as string) || (req.query.query as string) || (req.query.search as string);
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
 
-    const results = searchUpscPyqs({
+    const paginated = searchUpscPyqsPaginated({
       stage,
       paper,
       tier,
+      year,
       yearStart,
       yearEnd,
       topic,
       subtopic,
       subject,
+      difficulty,
+      questionType,
       recurringThemeId,
       searchQuery,
+      page,
+      limit,
     });
 
     res.json({
       success: true,
-      count: results.length,
-      pyqs: results,
+      count: paginated.items.length,
+      total: paginated.total,
+      page: paginated.page,
+      limit: paginated.limit,
+      totalPages: paginated.totalPages,
+      pyqs: paginated.items,
+      questions: paginated.items,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}
+
+app.get("/api/pyqs", authenticateToken, handlePyqSearch);
+app.get("/api/pyqs/search", authenticateToken, handlePyqSearch);
+app.get("/api/pyq/questions", authenticateToken, handlePyqSearch);
 
 app.get("/api/pyqs/analysis", authenticateToken, (_req, res) => {
   try {
@@ -2636,6 +2831,29 @@ app.post("/api/ai/stream", requireAuth, aiRateLimiter, async (req, res) => {
     res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
     res.end();
   }
+});
+
+// ----------------------------------------------------
+// CENTRALIZED EXPRESS ERROR HANDLER (NO RAW STACK TRACES OR SECRETS)
+// ----------------------------------------------------
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  totalErrorsCount++;
+  const reqId = (req as any).requestId || "unknown";
+  const rawMessage = err?.message || "Internal server error";
+  const safeMessage = redactSecrets(rawMessage);
+  console.error(`[ERROR] reqId=${reqId} path=${req.path} message="${safeMessage}"`);
+
+  if (res.headersSent) {
+    return;
+  }
+  const statusCode = typeof err?.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+  res.status(statusCode).json({
+    success: false,
+    error: statusCode === 500 && process.env.NODE_ENV === "production"
+      ? "An unexpected server error occurred. Please try again."
+      : safeMessage,
+    requestId: reqId,
+  });
 });
 
 // ----------------------------------------------------

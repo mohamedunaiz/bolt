@@ -450,7 +450,7 @@ function generateRelevancePointers(headline: string, summary: string, source: st
 
 // User-Agent and Accept headers compatible with upstream news publishers
 const RSS_HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "User-Agent": "BOLT-UPSC-News/1.0 (Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36; compatible)",
   Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/plain, */*",
 };
 
@@ -524,13 +524,21 @@ export class RssFetchError extends Error {
 }
 
 /**
- * Resolve the configurable per-feed timeout. Defaults to 15s and is clamped to
- * a sane 5s–60s window.
+ * Resolve the configurable per-feed timeout. Defaults to 10s and is clamped to
+ * a sane 2s–60s window.
  */
 export function resolveRssTimeoutMs(): number {
-  const configured = Number.parseInt(process.env.RSS_FETCH_TIMEOUT_MS || "15000", 10);
-  if (!Number.isFinite(configured)) return 15000;
-  return Math.min(60000, Math.max(5000, configured));
+  const configured = Number.parseInt(process.env.RSS_FETCH_TIMEOUT_MS || "10000", 10);
+  if (!Number.isFinite(configured)) return 10000;
+  return Math.min(60000, Math.max(2000, configured));
+}
+
+function isTransientRssError(err: RssFetchError): boolean {
+  if (err.kind === "timeout" || err.kind === "network") return true;
+  if (err.kind === "http_error" && err.httpStatus) {
+    return err.httpStatus === 408 || err.httpStatus === 429 || err.httpStatus >= 500;
+  }
+  return false;
 }
 
 /**
@@ -548,7 +556,7 @@ export function looksLikeXmlFeed(body: string, contentType = ""): boolean {
   return /xml|rss|atom|rdf/.test(contentType.toLowerCase());
 }
 
-export async function fetchXml(url: string, timeoutMs = resolveRssTimeoutMs()): Promise<string> {
+export async function fetchXmlSingleAttempt(url: string, timeoutMs = resolveRssTimeoutMs()): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -596,6 +604,42 @@ export async function fetchXml(url: string, timeoutMs = resolveRssTimeoutMs()): 
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Fetch XML with bounded retry and exponential backoff (1x -> 2x -> 4x)
+ * for transient failures (timeouts, network errors, HTTP 429/5xx).
+ */
+export async function fetchXml(
+  url: string,
+  timeoutMs = resolveRssTimeoutMs(),
+  options?: { maxAttempts?: number; baseDelayMs?: number }
+): Promise<string> {
+  const maxAttempts = Math.min(4, Math.max(1, options?.maxAttempts ?? 3));
+  const configuredDelay = Number.parseInt(process.env.RSS_RETRY_BASE_MS || "500", 10);
+  const baseDelayMs = options?.baseDelayMs ?? (Number.isFinite(configuredDelay) ? configuredDelay : 500);
+  let lastErr: RssFetchError | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fetchXmlSingleAttempt(url, timeoutMs);
+    } catch (err: any) {
+      const rssErr =
+        err instanceof RssFetchError
+          ? err
+          : new RssFetchError("network", err?.message || "Network request failed.");
+      lastErr = rssErr;
+
+      if (attempt < maxAttempts && isTransientRssError(rssErr)) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      throw rssErr;
+    }
+  }
+
+  throw lastErr || new RssFetchError("network", "Exhausted RSS retry attempts.");
 }
 
 export function parseFeedContent(

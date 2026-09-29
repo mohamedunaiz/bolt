@@ -3,10 +3,22 @@
  * Canonical configuration parameters for BOLT UPSC Preparation Platform.
  */
 
+const env = (typeof import.meta !== "undefined" && (import.meta as any).env) || {};
+
+export const API_BASE_URL: string = (env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+
+export function apiUrl(endpoint: string): string {
+  if (!endpoint) return API_BASE_URL;
+  if (/^https?:\/\//i.test(endpoint)) return endpoint;
+  const normalizedPath = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
+}
+
 export const APP_CONFIG = {
   name: "BOLT",
   fullName: "BOLT - UPSC Civil Services Preparation Platform",
   version: "1.0.0",
+  apiBaseUrl: API_BASE_URL,
   targetExam: "UPSC Civil Services Examination",
   defaultTargetYear: 2026,
   supportedOptionals: [

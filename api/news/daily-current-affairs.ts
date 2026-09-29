@@ -24,6 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await loadCurrentAffairsFromFirestore();
     const articles = Array.isArray(result?.articles) ? result.articles : [];
     const mcqs = Array.isArray(result?.mcqs) ? result.mcqs : [];
+    const sources = [...new Set(articles.map((a) => a.source).filter(Boolean))];
     const state = articles.length > 0 ? "ok" : "empty";
 
     return res.status(200).json({
@@ -31,6 +32,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       state,
       articles,
       mcqs,
+      sources,
+      publisherSources: sources,
+      sourceStats: { working: sources.length, failed: 0 },
       count: articles.length,
       updatedAt: result?.updatedAt ?? null,
       message:

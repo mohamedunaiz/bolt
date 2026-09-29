@@ -19,11 +19,26 @@ export interface PipelineStatus {
   sourcesSynced: string[];
   todayArticlesCount: number;
   dailyMcqsCount: number;
+  sources?: {
+    working: number;
+    failed: number;
+  };
 }
 
 // In-memory cache backed by file
 let cachedArticles: NewsArticle[] = [];
 let cachedMcqs: PrelimsQuestion[] = [];
+let lastRunTimestamp: string | null = null;
+let lastSourceSummary: { working: number; failed: number; workingSources: string[]; failedSources: Array<{ source: string; error: string }> } = {
+  working: 0,
+  failed: 0,
+  workingSources: [],
+  failedSources: [],
+};
+
+export function getLastSourceSummary() {
+  return lastSourceSummary;
+}
 
 function ensureDataDirectory() {
   const dir = path.dirname(DATA_STORE_PATH);
@@ -335,7 +350,8 @@ export async function runNewsIngestion(deps: IngestionDeps): Promise<IngestionRe
 
 /**
  * Runs the full end-to-end RSS ingestion pipeline across active news sources,
- * wiring the injectable core to the real RSS fetcher and Firestore cache.
+ * wiring the injectable core to the real RSS fetcher, server-side MCQ generator,
+ * and Firestore/disk cache.
  */
 export async function executeNewsIngestionPipeline(): Promise<IngestionResult> {
   const result = await runNewsIngestion({
@@ -343,10 +359,21 @@ export async function executeNewsIngestionPipeline(): Promise<IngestionResult> {
     fetchFeed: (url, source) => fetchAndParseRssFeed(url, source),
     loadCache: () => loadCurrentAffairsFromFirestore(),
     saveCache: async (articles) => {
-      await saveCurrentAffairsToFirestore(articles);
+      const mcqs = await generateDailyCurrentAffairsMCQsAsync(articles, 5);
+      await saveCurrentAffairsToFirestore(articles, mcqs);
       cachedArticles = articles;
+      cachedMcqs = mcqs;
     },
   });
+
+  lastRunTimestamp = result.updatedAt;
+  lastSourceSummary = {
+    working: result.successfulSources.length,
+    failed: result.failedSources.length,
+    workingSources: result.successfulSources,
+    failedSources: result.failedSources,
+  };
+
   return result;
 }
 
@@ -704,12 +731,17 @@ export function getPipelineStatus(): PipelineStatus {
   loadCurrentAffairsFromDisk();
   const todayStr = new Date().toISOString().split("T")[0];
   const todayCount = cachedArticles.filter(a => a.date?.includes(todayStr) || a.date?.includes("Today")).length;
+  const distinctSources = Array.from(new Set(cachedArticles.map((a) => a.source).filter(Boolean)));
 
   return {
-    lastRunTimestamp: new Date().toISOString(),
+    lastRunTimestamp: lastRunTimestamp || new Date().toISOString(),
     totalArticlesCount: cachedArticles.length,
-    sourcesSynced: ["The Hindu", "PIB", "The Indian Express"],
+    sourcesSynced: distinctSources.length > 0 ? distinctSources : ["The Hindu", "PIB", "The Indian Express"],
     todayArticlesCount: todayCount || cachedArticles.length,
     dailyMcqsCount: cachedMcqs.length,
+    sources: {
+      working: lastSourceSummary.working || distinctSources.length,
+      failed: lastSourceSummary.failed,
+    },
   };
 }
