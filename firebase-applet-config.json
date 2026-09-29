@@ -1,12 +1,9 @@
-const firebaseConfig = {
-  apiKey: "AIzaSyBG7akuvO0GyMzkMuu2GjbXpYt4bqmc38Q",
-  authDomain: "bolt-87397.firebaseapp.com",
-  projectId: "bolt-87397",
-  storageBucket: "bolt-87397.firebasestorage.app",
-  messagingSenderId: "869509004755",
-  appId: "1:869509004755:web:a31eef3b3595af50fb4326",
-  measurementId: "G-D5V8VQMFF2"
-};
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const googleProvider = new GoogleAuthProvider();
+{
+  "apiKey": "",
+  "authDomain": "",
+  "projectId": "",
+  "storageBucket": "",
+  "messagingSenderId": "",
+  "appId": "",
+  "measurementId": ""
+}

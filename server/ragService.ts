@@ -361,6 +361,7 @@ export function searchKnowledgeChunks(
   let categoryFilter: string | undefined = undefined;
   let limit = 4;
   let includeArchived = false;
+  let userId: string | undefined;
 
   if (typeof optionsOrCategory === "string") {
     categoryFilter = optionsOrCategory;
@@ -369,11 +370,16 @@ export function searchKnowledgeChunks(
     categoryFilter = optionsOrCategory.category;
     if (typeof optionsOrCategory.limit === "number") limit = optionsOrCategory.limit;
     includeArchived = Boolean(optionsOrCategory.includeArchived);
+    userId = optionsOrCategory.userId;
   }
 
   if (!query || query.trim().length === 0) {
     return store.chunks
-      .filter((c) => includeArchived || !archivedDocIds.has(c.documentId))
+      .filter((c) => {
+        const document = store.documents.find((d) => d.id === c.documentId);
+        const visibleToUser = !document || document.userId === "system" || document.userId === userId;
+        return visibleToUser && (includeArchived || !archivedDocIds.has(c.documentId));
+      })
       .slice(0, limit);
   }
 
@@ -382,6 +388,10 @@ export function searchKnowledgeChunks(
   const queryVector = generateEmbedding(query);
 
   const candidateChunks = store.chunks.filter((chunk) => {
+    const document = store.documents.find((d) => d.id === chunk.documentId);
+    if (document && document.userId !== "system" && document.userId !== userId) {
+      return false;
+    }
     if (!includeArchived && archivedDocIds.has(chunk.documentId)) {
       return false;
     }

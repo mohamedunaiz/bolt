@@ -37,6 +37,7 @@ export interface UpscPyqItem {
   };
   linkedCurrentAffairsTags: string[];
   practiceDrillPrompt: string;
+  verificationStatus?: "VERIFIED_OFFICIAL_PYQ" | "VERIFIED_RELIABLE_ARCHIVE" | "AI_PRACTICE_QUESTION" | "UNVERIFIED";
 }
 
 export interface RecurringThemeAnalysis {
@@ -495,7 +496,9 @@ export function searchUpscPyqs(filter?: PyqSearchFilter): UpscPyqItem[] {
     );
   }
 
-  return list.sort((a, b) => b.year - a.year);
+  return list
+    .sort((a, b) => b.year - a.year)
+    .map((item) => ({ ...item, verificationStatus: item.verificationStatus || "UNVERIFIED" }));
 }
 
 export function getRecurringThemeAnalytics(): RecurringThemeAnalysis[] {
@@ -503,7 +506,8 @@ export function getRecurringThemeAnalytics(): RecurringThemeAnalysis[] {
 }
 
 export function getPyqById(id: string): UpscPyqItem | null {
-  return UPSC_PYQ_REPOSITORY.find((p) => p.id === id) || null;
+  const item = UPSC_PYQ_REPOSITORY.find((p) => p.id === id);
+  return item ? { ...item, verificationStatus: item.verificationStatus || "UNVERIFIED" } : null;
 }
 
 /**

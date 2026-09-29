@@ -369,6 +369,7 @@ export interface SyllabusTopic {
 
 export interface PrelimsQuestion {
   id: string;
+  articleId?: string;
   questionNumber: number;
   subject: string;
   topic?: string;
@@ -389,6 +390,8 @@ export interface PrelimsQuestion {
   }[];
   relatedConcept?: string;
   source?: string;
+  groundingEvidence?: string[];
+  generationStatus?: "AI_PRACTICE_QUESTION" | "AI_GENERATION_REJECTED";
   difficulty: "Easy" | "Medium" | "Hard";
 }
 

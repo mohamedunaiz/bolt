@@ -11,6 +11,7 @@ import { fetchAndParseRssFeed, POPULAR_UPSC_FEEDS } from "./server/rssService";
 import {
   executeNewsIngestionPipeline,
   generateDailyCurrentAffairsMCQs,
+  generateDailyCurrentAffairsMCQsAsync,
   getPipelineStatus,
   loadCurrentAffairsFromDisk,
   loadCurrentAffairsFromFirestore,
@@ -294,21 +295,11 @@ Return ONLY valid JSON matching this exact structure:
       }
     }
 
-    // Curated high-yield UPSC question fallback
-    res.json({
-      success: true,
-      mcq: {
-        questionText: `With reference to recent developments concerning ${headline || "Public Policy"}, consider the following statements:\n1. Statutory authorities must exercise delegated powers strictly within parent legislative intent.\n2. The doctrine of proportionality requires administrative actions to achieve objectives with minimal impairment.\nWhich of the statements given above is/are correct?`,
-        options: [
-          { key: "A", text: "1 only" },
-          { key: "B", text: "2 only" },
-          { key: "C", text: "Both 1 and 2" },
-          { key: "D", text: "Neither 1 nor 2" },
-        ],
-        correctOption: "C",
-        explanation: "Both statements are correct. The doctrine of ultra vires governs delegated legislation (Statement 1) and administrative actions must satisfy proportionality as affirmed in the Puttaswamy judgment (Statement 2).",
-        upscSyllabusLink: `${(gsTags && gsTags[0]) || "GS 2"}: Executive accountability and administrative law`,
-      },
+    return res.status(422).json({
+      success: false,
+      status: "AI_GENERATION_REJECTED",
+      error: "No validated article-grounded practice question could be generated.",
+      articleId: req.body.articleId || null,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -1244,6 +1235,39 @@ function isApprovedFeedUrl(rawUrl: string): boolean {
   }
 }
 
+let newsSyncInProgress = false;
+
+function hasNewsCronSecret(req: express.Request): boolean {
+  const expected = process.env.NEWS_CRON_SECRET;
+  if (!expected) return false;
+  const header = req.headers.authorization || "";
+  const bearer = header.replace(/^Bearer\s+/i, "");
+  return bearer === expected || req.headers["x-news-cron-secret"] === expected;
+}
+
+app.post("/api/news/sync", async (req, res) => {
+  if (!hasNewsCronSecret(req)) {
+    return res.status(process.env.NEWS_CRON_SECRET ? 403 : 503).json({
+      success: false,
+      error: process.env.NEWS_CRON_SECRET ? "Invalid news sync credential." : "NEWS_CRON_SECRET is not configured.",
+    });
+  }
+  if (newsSyncInProgress) {
+    return res.status(409).json({ success: false, error: "NEWS_SYNC_IN_PROGRESS" });
+  }
+
+  newsSyncInProgress = true;
+  try {
+    const result = await executeNewsIngestionPipeline();
+    res.json({ success: true, ...result, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    const status = error?.message === "CURRENT_AFFAIRS_SYNC_IN_PROGRESS" ? 409 : 500;
+    res.status(status).json({ success: false, error: error?.message || "News synchronization failed." });
+  } finally {
+    newsSyncInProgress = false;
+  }
+});
+
 // Fetch & Parse single RSS/Atom Feed URL — restricted to approved source hostnames only.
 app.post("/api/news/fetch-feed", requireAuth, async (req, res) => {
   try {
@@ -1290,7 +1314,7 @@ app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, error: "No approved feed URLs supplied." });
     }
 
-    const results = await Promise.all(
+    const results = await Promise.allSettled(
       feedUrls.map((f) => fetchAndParseRssFeed(f.url, f.sourceName))
     );
 
@@ -1298,8 +1322,14 @@ app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
     const seenHeadlines = new Set<string>();
     const mergedArticles = [];
 
-    for (const r of results) {
-      if (r && r.articles) {
+    const failedSources: string[] = [];
+    for (const result of results) {
+      if (result.status === "rejected") {
+        failedSources.push("unknown");
+        continue;
+      }
+      const r = result.value;
+      if (r.success && r.articles) {
         for (const art of r.articles) {
           const normTitle = art.headline.toLowerCase().trim();
           if (!seenHeadlines.has(normTitle)) {
@@ -1307,6 +1337,8 @@ app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
             mergedArticles.push(art);
           }
         }
+      } else {
+        failedSources.push(r.sourceDetected);
       }
     }
 
@@ -1314,7 +1346,10 @@ app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
       success: true,
       count: mergedArticles.length,
       articles: mergedArticles,
-      sourcesSynced: results.map((r) => r.sourceDetected),
+      sourcesSynced: results
+        .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof fetchAndParseRssFeed>>> => r.status === "fulfilled" && r.value.success)
+        .map((r) => r.value.sourceDetected),
+      failedSources,
     });
   } catch (error: any) {
     console.error("Sync all feeds error:", error);
@@ -2129,7 +2164,7 @@ jobQueue.registerWorker("current_affairs_sync", async (job) => {
   jobQueue.updateProgress(job.id, 30);
   const res = await executeNewsIngestionPipeline();
   jobQueue.updateProgress(job.id, 70);
-  const mcqs = generateDailyCurrentAffairsMCQs(res.articles, 5);
+  const mcqs = await generateDailyCurrentAffairsMCQsAsync(res.articles, 5);
   jobQueue.updateProgress(job.id, 100);
   return { newlyIngested: res.newlyIngested, mcqsGenerated: mcqs.length };
 });

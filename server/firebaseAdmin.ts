@@ -4,12 +4,14 @@ import fs from "fs";
 import path from "path";
 
 let isInitialized = false;
+let initializationError: Error | null = null;
 
 /**
  * Initialize Firebase Admin SDK for cryptographic token verification & claims management.
  * Gracefully handles production credentials, local development, and emulator environments.
  */
 export function initFirebaseAdmin(): App | null {
+  if (initializationError) return null;
   if (isInitialized || getApps().length > 0) {
     isInitialized = true;
     return getApps()[0] || null;
@@ -42,25 +44,19 @@ export function initFirebaseAdmin(): App | null {
       }
     }
 
-    // Initialize with application default credentials or project ID fallback
-    const app = initializeApp({
-      projectId: projectId || "bolt-87397",
-    });
+    const app = initializeApp({ projectId });
     isInitialized = true;
-    console.log("Firebase Admin initialized for project:",projectId || "bolt-87397");
+    console.log("Firebase Admin initialized for project:", projectId || "application-default");
     return app;
   } catch (e: any) {
-    console.warn("Firebase Admin initialization notice (operating in fallback mode):", e.message);
-    try {
-      if (getApps().length === 0) {
-        return initializeApp();
-      }
-      isInitialized = true;
-      return getApps()[0] || null;
-    } catch {
-      return null;
-    }
+    initializationError = e instanceof Error ? e : new Error(String(e));
+    console.warn("Firebase Admin unavailable:", initializationError.message);
+    return null;
   }
+}
+
+export function getFirebaseAdminInitializationError(): Error | null {
+  return initializationError;
 }
 
 /**

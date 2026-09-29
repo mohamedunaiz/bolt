@@ -224,7 +224,7 @@ export class BoltAgentRuntime {
     const intel = StudentIntelligenceEngine.analyze(candidateData);
 
     // Retrieve verified knowledge chunks via RAG
-    const rawChunks = searchKnowledgeChunks(userQuery, undefined, 6);
+    const rawChunks = searchKnowledgeChunks(userQuery, { limit: 6, userId: candidate.id || candidate.userId });
     const rerankable = rawChunks.map((c) => ({
       id: c.id,
       title: c.documentTitle,

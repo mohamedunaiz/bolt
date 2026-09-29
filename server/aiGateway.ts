@@ -1675,12 +1675,29 @@ Return ONLY valid JSON matching this exact structure:
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0]);
             const crit = parsed.criteria || {};
-            const sum = Object.values(crit).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-            const score = Math.min(15, Math.round(Number(sum) * 10) / 10);
+            const caps = {
+              introductionScore: 1.5,
+              conceptualClarityScore: 2,
+              contentDemandScore: 4,
+              analysisScore: 2,
+              examplesAndThinkersScore: 1.5,
+              structureScore: 1,
+              conclusionScore: 1,
+            } as const;
+            for (const [key, cap] of Object.entries(caps)) {
+              const value = Number(crit[key]);
+              if (!Number.isFinite(value) || value < 0 || value > cap) {
+                throw new Error(`Invalid Mains rubric score for ${key}`);
+              }
+            }
+            const rubricTotal = Object.keys(caps).reduce((sum, key) => sum + Number(crit[key]), 0);
+            const requestedMaxMarks = Number(rubric.maxMarks);
+            const maxMarks = Number.isFinite(requestedMaxMarks) && requestedMaxMarks > 0 ? requestedMaxMarks : 15;
+            const score = Math.round((rubricTotal / Object.values(caps).reduce((a, b) => a + b, 0)) * maxMarks * 10) / 10;
 
             return {
               score,
-              maxMarks: 15,
+              maxMarks,
               criteria: {
                 questionDemand: Math.round(((crit.contentDemandScore || 2.5) / 4) * 10),
                 content: Math.round(((crit.conceptualClarityScore || 1.3) / 2) * 10),
@@ -1723,11 +1740,13 @@ function evaluateRuleBasedMains(
 ): MainsEvaluationResult {
   const lower = answer.toLowerCase();
   const wordCount = answer.split(/\s+/).filter(Boolean).length;
+  const requestedMaxMarks = Number(rubric.maxMarks);
+  const maxMarks = Number.isFinite(requestedMaxMarks) && requestedMaxMarks > 0 ? requestedMaxMarks : 15;
 
   if (wordCount < 15) {
     return {
       score: 1.8,
-      maxMarks: 15,
+      maxMarks,
       criteria: {
         questionDemand: 1,
         content: 1,
@@ -1794,11 +1813,12 @@ function evaluateRuleBasedMains(
     conclusion = Math.min(1.0, 0.85);
   }
 
-  const total = Math.min(15, Math.round((intro + clarity + demand + analysis + examples + structure + conclusion) * 10) / 10);
+  const rubricTotal = intro + clarity + demand + analysis + examples + structure + conclusion;
+  const total = Math.round((rubricTotal / 13) * maxMarks * 10) / 10;
 
   return {
     score: total,
-    maxMarks: 15,
+    maxMarks,
     criteria: {
       questionDemand: Math.round((demand / 4) * 10),
       content: Math.round((clarity / 2) * 10),

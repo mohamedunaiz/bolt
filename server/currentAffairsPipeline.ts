@@ -3,6 +3,8 @@ import path from "path";
 import { NewsArticle, PrelimsQuestion } from "../src/types";
 import { fetchAndParseRssFeed, POPULAR_UPSC_FEEDS } from "./rssService";
 import { getGeminiClient, executeGeminiWithFailover } from "./aiGateway";
+import { getFirestore } from "firebase-admin/firestore";
+import { initFirebaseAdmin } from "./firebaseAdmin";
 
 /**
  * BOLT UPSC Current Affairs Processing Pipeline
@@ -23,6 +25,8 @@ export interface PipelineStatus {
 // In-memory cache backed by file
 let cachedArticles: NewsArticle[] = [];
 let cachedMcqs: PrelimsQuestion[] = [];
+let pipelineInProgress = false;
+let lastPipelineRunTimestamp: string | null = null;
 
 function ensureDataDirectory() {
   const dir = path.dirname(DATA_STORE_PATH);
@@ -72,6 +76,21 @@ export async function loadCurrentAffairsFromFirestore(): Promise<{
   articles: NewsArticle[];
   mcqs: PrelimsQuestion[];
 }> {
+  const app = initFirebaseAdmin();
+  if (app) {
+    try {
+      const db = getFirestore(app);
+      const [articleSnapshot, mcqSnapshot] = await Promise.all([
+        db.collection("current_affairs").orderBy("retrievedAt", "desc").limit(100).get(),
+        db.collection("daily_mcqs").orderBy("generatedAt", "desc").limit(50).get(),
+      ]);
+      cachedArticles = articleSnapshot.docs.map((doc) => doc.data() as NewsArticle);
+      cachedMcqs = mcqSnapshot.docs.map((doc) => doc.data() as PrelimsQuestion);
+      return { articles: cachedArticles, mcqs: cachedMcqs };
+    } catch (error: any) {
+      console.warn("Current affairs Firestore read failed; using local development cache:", error.message);
+    }
+  }
   loadCurrentAffairsFromDisk();
   return { articles: cachedArticles, mcqs: cachedMcqs };
 }
@@ -82,6 +101,24 @@ export async function saveCurrentAffairsToFirestore(
 ): Promise<void> {
   cachedArticles = articles;
   if (mcqs) cachedMcqs = mcqs;
+  const app = initFirebaseAdmin();
+  if (app) {
+    try {
+      const db = getFirestore(app);
+      const batch = db.batch();
+      for (const article of cachedArticles) {
+        const id = Buffer.from(article.id).toString("base64url").slice(0, 500);
+        batch.set(db.collection("current_affairs").doc(id), article, { merge: true });
+      }
+      for (const mcq of cachedMcqs) {
+        const id = Buffer.from(mcq.id).toString("base64url").slice(0, 500);
+        batch.set(db.collection("daily_mcqs").doc(id), { ...mcq, generatedAt: new Date().toISOString() }, { merge: true });
+      }
+      await batch.commit();
+    } catch (error: any) {
+      console.warn("Current affairs Firestore write failed; retaining local cache only:", error.message);
+    }
+  }
   saveCurrentAffairsToDisk(cachedArticles, cachedMcqs);
 }
 
@@ -123,33 +160,49 @@ export async function executeNewsIngestionPipeline(): Promise<{
   articles: NewsArticle[];
   newlyIngested: number;
   sources: string[];
+  failedSources: string[];
 }> {
+  if (pipelineInProgress) {
+    throw new Error("CURRENT_AFFAIRS_SYNC_IN_PROGRESS");
+  }
+  pipelineInProgress = true;
   const sources: string[] = [];
+  const failedSources: string[] = [];
   let collected: NewsArticle[] = [];
 
-  for (const feed of POPULAR_UPSC_FEEDS) {
-    try {
-      const result = await fetchAndParseRssFeed(feed.url, feed.source);
-      if (result.articles && result.articles.length > 0) {
-        collected = [...collected, ...result.articles];
-        sources.push(feed.name);
+  try {
+    for (const feed of POPULAR_UPSC_FEEDS) {
+      try {
+        const result = await fetchAndParseRssFeed(feed.url, feed.source);
+        if (result.success && result.articles.length > 0) {
+          collected = [...collected, ...result.articles];
+          sources.push(feed.name);
+        } else {
+          failedSources.push(feed.name);
+        }
+      } catch (e) {
+        failedSources.push(feed.name);
+        console.warn(`Feed fetch failed for ${feed.name}:`, e);
       }
-    } catch (e) {
-      console.warn(`Feed fetch failed for ${feed.name}:`, e);
     }
+
+    loadCurrentAffairsFromDisk();
+    const beforeCount = cachedArticles.length;
+    if (collected.length > 0) {
+      cachedArticles = deduplicateArticles(collected, cachedArticles);
+      await saveCurrentAffairsToFirestore(cachedArticles, cachedMcqs);
+    }
+
+    return {
+      articles: cachedArticles,
+      newlyIngested: Math.max(0, cachedArticles.length - beforeCount),
+      sources,
+      failedSources,
+    };
+  } finally {
+    lastPipelineRunTimestamp = new Date().toISOString();
+    pipelineInProgress = false;
   }
-
-  loadCurrentAffairsFromDisk();
-  const beforeCount = cachedArticles.length;
-  const merged = deduplicateArticles(collected, cachedArticles);
-  cachedArticles = merged;
-  saveCurrentAffairsToDisk(cachedArticles);
-
-  return {
-    articles: cachedArticles,
-    newlyIngested: Math.max(0, cachedArticles.length - beforeCount),
-    sources,
-  };
 }
 
 export interface McqValidationResult {
@@ -169,6 +222,12 @@ export function validatePrelimsMcq(mcq: any): McqValidationResult {
   const errors: string[] = [];
   if (!mcq) {
     return { isValid: false, errors: ["MCQ payload is null or undefined"] };
+  }
+  if (mcq.isCurrentAffairs && (!mcq.articleId || mcq.generationStatus !== "AI_PRACTICE_QUESTION")) {
+    errors.push("Current-affairs MCQs require an articleId and AI_PRACTICE_QUESTION status.");
+  }
+  if (mcq.isCurrentAffairs && (!Array.isArray(mcq.groundingEvidence) || mcq.groundingEvidence.length === 0)) {
+    errors.push("Current-affairs MCQs require explicit source grounding evidence.");
   }
   if (typeof mcq.questionText !== "string" || mcq.questionText.trim().length < 20) {
     errors.push("questionText must be at least 20 characters long.");
@@ -193,6 +252,13 @@ export function validatePrelimsMcq(mcq: any): McqValidationResult {
 
   if (!["A", "B", "C", "D"].includes(mcq.correctOption)) {
     errors.push("correctOption must be one of 'A', 'B', 'C', or 'D'.");
+  }
+
+  if (Array.isArray(mcq.optionAnalysis)) {
+    const correctAnalyses = mcq.optionAnalysis.filter((item: any) => item?.isCorrect === true);
+    if (correctAnalyses.length !== 1 || correctAnalyses[0]?.optionKey !== mcq.correctOption) {
+      errors.push("optionAnalysis must identify exactly the selected correct option.");
+    }
   }
 
   if (typeof mcq.explanation !== "string" || mcq.explanation.trim().length < 15) {
@@ -387,10 +453,12 @@ Return ONLY valid JSON with this exact schema:
 
     const candidateMcq: PrelimsQuestion = {
       id: `mcq-ca-ai-${Date.now()}-${index + 1}`,
+      articleId: art.id,
       questionNumber: index + 1,
       subject,
       topic: art.gsTags.join(", "),
       tags: [...art.gsTags, "Current Affairs", "Prelims 2026", "AI-Generated"],
+      generationStatus: "AI_PRACTICE_QUESTION",
       isCurrentAffairs: true,
       questionText: parsed.questionText,
       options: parsed.options,
@@ -399,6 +467,7 @@ Return ONLY valid JSON with this exact schema:
       optionAnalysis: parsed.optionAnalysis || [],
       relatedConcept: parsed.relatedConcept || art.headline,
       source: art.source,
+      groundingEvidence: [art.summary, ...art.keyHighlights].filter(Boolean),
       difficulty: parsed.difficulty === "Hard" ? "Hard" : "Medium",
     };
 
@@ -438,10 +507,8 @@ export async function generateDailyCurrentAffairsMCQsAsync(
       generated = null;
     }
 
-    // 2. If AI is unavailable or validation fails, use grounded factual formulation
-    if (!generated) {
-      generated = generateGroundedFactualMcq(art, i);
-    }
+    // Do not publish a synthetic fallback when an article-grounded AI question cannot be validated.
+    if (!generated) continue;
 
     // Deduplication check
     const sig = generated.questionText.slice(0, 60).toLowerCase().trim();
@@ -462,7 +529,7 @@ export async function generateDailyCurrentAffairsMCQsAsync(
   // Merge and retain recent validated MCQs
   const mergedMcqs = [...mcqs, ...cachedMcqs].slice(0, 50);
   cachedMcqs = mergedMcqs;
-  saveCurrentAffairsToDisk(cachedArticles, cachedMcqs);
+  await saveCurrentAffairsToFirestore(cachedArticles, cachedMcqs);
   return mcqs;
 }
 
@@ -471,35 +538,10 @@ export async function generateDailyCurrentAffairsMCQsAsync(
  * executing grounded factual formulation with strict validation.
  */
 export function generateDailyCurrentAffairsMCQs(articles: NewsArticle[], count: number = 5): PrelimsQuestion[] {
-  const targetArticles = articles.filter((a) => a.prelimsTag || a.upscRelevance?.prelimsFact).slice(0, count * 2);
-  const mcqs: PrelimsQuestion[] = [];
-  const existingSignatures = new Set(cachedMcqs.map((m) => m.questionText.slice(0, 60).toLowerCase().trim()));
-
-  for (let i = 0; i < Math.min(count, targetArticles.length); i++) {
-    const art = targetArticles[i];
-    const candidateMcq = generateGroundedFactualMcq(art, i);
-
-    // Deduplication check
-    const sig = candidateMcq.questionText.slice(0, 60).toLowerCase().trim();
-    if (existingSignatures.has(sig)) {
-      continue;
-    }
-    existingSignatures.add(sig);
-
-    // Strict validation
-    const validation = validatePrelimsMcq(candidateMcq);
-    if (validation.isValid) {
-      mcqs.push(candidateMcq);
-    } else {
-      console.warn(`MCQ rejected due to validation failure:`, validation.errors);
-    }
-  }
-
-  // Merge and retain recent validated MCQs
-  const mergedMcqs = [...mcqs, ...cachedMcqs].slice(0, 50);
-  cachedMcqs = mergedMcqs;
-  saveCurrentAffairsToDisk(cachedArticles, cachedMcqs);
-  return mcqs;
+  void articles;
+  void count;
+  console.warn("[MCQ Generator] AI_GENERATION_REJECTED: synchronous generation is disabled because grounding cannot be verified.");
+  return [];
 }
 
 export function getPipelineStatus(): PipelineStatus {
@@ -508,7 +550,7 @@ export function getPipelineStatus(): PipelineStatus {
   const todayCount = cachedArticles.filter(a => a.date?.includes(todayStr) || a.date?.includes("Today")).length;
 
   return {
-    lastRunTimestamp: new Date().toISOString(),
+    lastRunTimestamp: lastPipelineRunTimestamp,
     totalArticlesCount: cachedArticles.length,
     sourcesSynced: ["The Hindu", "PIB", "The Indian Express"],
     todayArticlesCount: todayCount || cachedArticles.length,
