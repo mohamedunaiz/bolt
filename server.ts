@@ -1648,48 +1648,39 @@ app.get("/api/news/daily-current-affairs", authenticateToken, async (req, res) =
   }
 });
 
-app.get("/api/news/sync", async (req, res) => {
-  const expectedSecret = process.env.CRON_SECRET;
+let newsSyncInFlight: Promise<Awaited<ReturnType<typeof executeNewsIngestionPipeline>>> | null = null;
+
+/**
+ * External scheduler endpoint. It intentionally requires a dedicated secret in
+ * every environment; user/admin auth must not be used as a scheduler credential.
+ * The in-flight guard also makes overlapping scheduler retries safe on a warm
+ * serverless instance, while the ingestion pipeline deduplicates persisted data.
+ */
+app.all("/api/news/sync", async (req, res) => {
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.set("Allow", "GET, POST");
+    return res.status(405).json({ success: false, error: "Method not allowed" });
+  }
+
+  const expectedSecret = process.env.NEWS_CRON_SECRET;
   const authorization = req.get("authorization");
-  const querySecret = req.query.secret || req.query.cron_secret;
-  const xCronSecret = req.get("x-cron-secret");
-
+  const headerSecret = req.get("x-news-cron-secret");
   const providedSecret =
-    (authorization && authorization.startsWith("Bearer ") ? authorization.slice(7) : null) ||
-    (typeof querySecret === "string" ? querySecret : null) ||
-    (typeof xCronSecret === "string" ? xCronSecret : null);
+    (authorization?.startsWith("Bearer ") ? authorization.slice(7) : null) || headerSecret;
 
-  // If CRON_SECRET is configured, enforce strict verification
-  if (expectedSecret) {
-    if (providedSecret !== expectedSecret) {
-      const user = verifyToken(authorization || "");
-      if (!user?.isAdmin) {
-        return res.status(401).json({
-          success: false,
-          state: "auth_failure",
-          error: "Unauthorized cron request: CRON_SECRET mismatch.",
-        });
-      }
-    }
-  } else {
-    // If CRON_SECRET is not configured in environment:
-    // Allow in non-production, or if an authenticated admin user triggers it
-    if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
-      const user = verifyToken(authorization || "");
-      if (!user?.isAdmin) {
-        return res.status(401).json({
-          success: false,
-          state: "auth_failure",
-          error: "Unauthorized: CRON_SECRET environment variable is not configured.",
-        });
-      }
-    } else {
-      console.warn("[CRON] Executing news sync without CRON_SECRET configured (development / preview mode).");
-    }
+  if (!expectedSecret || !providedSecret) {
+    return res.status(401).json({ success: false, state: "auth_failure", error: "Unauthorized scheduler request." });
+  }
+
+  const expectedBuffer = Buffer.from(expectedSecret);
+  const providedBuffer = Buffer.from(providedSecret);
+  if (expectedBuffer.length !== providedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
+    return res.status(401).json({ success: false, state: "auth_failure", error: "Unauthorized scheduler request." });
   }
 
   try {
-    const pipelineResult = await executeNewsIngestionPipeline();
+    newsSyncInFlight ??= executeNewsIngestionPipeline();
+    const pipelineResult = await newsSyncInFlight;
 
     // Comprehensive logging per requirement 12:
     // source, URL, HTTP status, failure reason, number of articles, sync timestamp
@@ -1714,7 +1705,7 @@ app.get("/api/news/sync", async (req, res) => {
       timestamp: pipelineResult.updatedAt,
     });
   } catch (error: any) {
-    console.error("[CRON] news sync failed:", error?.message || error);
+    console.error("[NEWS-SYNC] news sync failed:", error?.message || error);
     return res.status(500).json({
       success: false,
       state: "backend_failure",
@@ -1723,6 +1714,8 @@ app.get("/api/news/sync", async (req, res) => {
       cacheWritten: false,
       timestamp: new Date().toISOString(),
     });
+  } finally {
+    newsSyncInFlight = null;
   }
 });
 
