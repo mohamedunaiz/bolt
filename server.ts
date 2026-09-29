@@ -82,7 +82,7 @@ initFirebaseAdmin();
 
 const app = express();
 app.set("trust proxy", 1);
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.NODE_ENV === "production" ? (Number(process.env.PORT) || 8080) : 3000;
 
 // Production Monitoring & Telemetry Counters
 let totalRequestsCount = 0;
