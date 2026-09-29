@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { loadCurrentAffairsFromFirestore } from "../../server/currentAffairsPipeline.ts";
+import { loadCurrentAffairsFromFirestore } from "../../server/currentAffairsPipeline.js";
 
 /**
  * Read-only serverless endpoint the frontend polls for daily current affairs.
