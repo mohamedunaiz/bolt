@@ -26,6 +26,7 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Build output
+.vercel-build/
 dist/
 dist-electron/
 build/

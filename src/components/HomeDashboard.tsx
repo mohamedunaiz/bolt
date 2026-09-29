@@ -97,7 +97,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onAskBoltAboutWeakness,
   onStartRevision,
   onViewEvaluation,
-  onAskBolt = () => {},
+  onAskBolt,
   onStartTodayMCQs = () => onNavigate("prelims"),
 }) => {
   const [omnibarQuery, setOmnibarQuery] = useState("");
@@ -184,7 +184,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     e.preventDefault();
     const query = omnibarQuery.trim();
     if (!query) return;
-    onAskBolt(query);
+    onAskBolt?.(query);
     setOmnibarQuery("");
   };
 
@@ -284,7 +284,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               {QUICK_PROMPTS.map((p, idx) => (
                 <button
                   key={idx}
-                  onClick={() => onAskBolt(p.prompt)}
+                  onClick={() => onAskBolt?.(p.prompt)}
                   className="whitespace-nowrap px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/90 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-medium flex items-center space-x-1.5 transition-colors shrink-0"
                 >
                   <span>{p.icon}</span>
