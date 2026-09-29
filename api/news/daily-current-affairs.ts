@@ -6,7 +6,7 @@ import { loadCurrentAffairsFromFirestore } from "../../server/currentAffairsPipe
  *
  * Contract: this endpoint NEVER returns a 5xx. Reading the cache is a pure read
  * that must not fail the UI even when Firestore is unreachable or empty. The
- * heavy ingestion work happens out-of-band in the cron-driven /api/news/sync.
+ * heavy ingestion work happens out-of-band in the externally scheduled /api/news/sync endpoint.
  *
  * The response `state` lets the UI show an accurate message instead of a
  * generic error:
