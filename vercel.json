@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm run build",
-  "installCommand": "npm install",
+  "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "dist",
   "framework": null,
   "functions": {

@@ -1,6 +1,7 @@
 {
   "name": "bolt",
   "private": true,
+  "packageManager": "pnpm@10.15.1",
   "version": "1.0.0",
   "description": "BOLT — UPSC CSE AI Preparation Platform",
   "author": "BOLT",
