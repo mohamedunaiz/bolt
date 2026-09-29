@@ -161,7 +161,7 @@ export const DEFAULT_GATEWAY_CONFIG: AIGatewayConfig = {
   baseUrl: "",
   localEndpoint: "http://localhost:11434",
   localModelId: "llama3.1:8b-instruct-q4_K_M",
-  cloudModelId: "gemini-3.1-flash-lite",
+  cloudModelId: "gemini-2.5-flash",
   temperature: 0.7,
   contextWindow: 32768,
   activeAdapter: "bolt-upsc-pubadmin-adapter-v1",
