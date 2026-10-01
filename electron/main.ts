@@ -57,7 +57,6 @@ function createSplashWindow(): void {
     movable: true,
     show: true,
     backgroundColor: "#0b0f17",
-    icon: path.join(__dirname, "..", "build", "icons", "icon.ico"),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   splashWindow.loadFile(path.join(RENDERER_DIR, "splash.html"));
