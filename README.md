@@ -2,7 +2,7 @@
 
 > **BOLT** is an AI-powered UPSC Civil Services Examination preparation platform for structured learning, current affairs, Prelims practice, Mains evaluation, personalized progress intelligence, adaptive revision, and grounded document-based assistance.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](./package.json)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue)](./package.json)
 [![React](https://img.shields.io/badge/React-19-61DAFB)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6)](https://www.typescriptlang.org/)
 [![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-FFCA28)](https://firebase.google.com/)
@@ -282,7 +282,7 @@ See [`ROLLBACK.md`](./ROLLBACK.md) for the repository rollback procedure.
 
 ## Release
 
-**BOLT v1.0.0**
+**BOLT v1.1.0**
 
 The repository contains the production-oriented web application, backend services, security rules, RAG/knowledge tooling, current-affairs pipeline, test suites, and deployment configuration.
 
