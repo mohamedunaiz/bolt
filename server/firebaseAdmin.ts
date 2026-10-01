@@ -104,6 +104,72 @@ export function getAdminFirestore(): Firestore | null {
   }
 }
 
+let firestoreHealthCache: {
+  status: "connected" | "degraded" | "unauthenticated" | "unconfigured";
+  authenticated: boolean;
+  latencyMs: number;
+  error: string | null;
+  timestamp: number;
+} | null = null;
+
+export async function checkFirestoreHealth(forceRefresh = false): Promise<{
+  status: "connected" | "degraded" | "unauthenticated" | "unconfigured";
+  authenticated: boolean;
+  latencyMs: number;
+  error: string | null;
+}> {
+  const now = Date.now();
+  if (!forceRefresh && firestoreHealthCache && now - firestoreHealthCache.timestamp < 30000) {
+    return firestoreHealthCache;
+  }
+
+  const app = initFirebaseAdmin();
+  if (!app) {
+    const initErr = getFirebaseAdminInitializationError();
+    const result = {
+      status: "unconfigured" as const,
+      authenticated: false,
+      latencyMs: 0,
+      error: initErr?.message || "Firebase Admin not initialized",
+      timestamp: now,
+    };
+    firestoreHealthCache = result;
+    return result;
+  }
+
+  const t0 = Date.now();
+  try {
+    const { getFirestore } = await import("firebase-admin/firestore");
+    const db = getFirestore(app);
+    await db.collection("current_affairs").limit(1).get();
+    const latencyMs = Math.max(1, Date.now() - t0);
+    const result = {
+      status: "connected" as const,
+      authenticated: true,
+      latencyMs,
+      error: null,
+      timestamp: now,
+    };
+    firestoreHealthCache = result;
+    return result;
+  } catch (err: any) {
+    const latencyMs = Math.max(1, Date.now() - t0);
+    const msg = err?.message || String(err);
+    const isUnauth =
+      msg.includes("UNAUTHENTICATED") ||
+      msg.includes("invalid authentication credentials") ||
+      err?.code === 16;
+    const result = {
+      status: isUnauth ? ("unauthenticated" as const) : ("degraded" as const),
+      authenticated: !isUnauth,
+      latencyMs,
+      error: msg,
+      timestamp: now,
+    };
+    firestoreHealthCache = result;
+    return result;
+  }
+}
 /**
  * Cryptographically verify a Firebase ID token using the Admin SDK.
  * Unlike authMiddleware's fast-path decode (used for general API auth),
