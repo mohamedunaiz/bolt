@@ -26,7 +26,6 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Build output
-.vercel-build/
 dist/
 dist-electron/
 build/
@@ -45,7 +44,7 @@ firebase-debug.log*
 firebase-debug.*.log*
 
 # Runtime / local data
-/data/
+data/
 *.db
 *.sqlite
 *.sqlite3

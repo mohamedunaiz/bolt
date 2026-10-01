@@ -1,12 +1,9 @@
 {
-  "projectId": "bolt-87397",
-  "appId": "1:869509004755:web:b0f0ee981ba59ea3fb4326",
-  "apiKey": "AIzaSyBG7akuvO0GyMzkMuu2GjbXpYt4bqmc38Q",
-  "authDomain": "bolt-87397.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-bolt-052aec08-3274-4377-b75b-b14b3b9c7928",
-  "storageBucket": "bolt-87397.firebasestorage.app",
-  "messagingSenderId": "869509004755",
-  "measurementId": "",
-  "oAuthClientId": "869509004755-o92k5bjt6mv225hfm05sg12dauck1l5m.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "apiKey": "",
+  "authDomain": "",
+  "projectId": "",
+  "storageBucket": "",
+  "messagingSenderId": "",
+  "appId": "",
+  "measurementId": ""
 }
