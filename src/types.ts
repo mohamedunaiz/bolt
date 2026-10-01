@@ -14,76 +14,6 @@ export type NavigationTab =
   | "pyqs"
   | "settings";
 
-export interface UpscPyqItem {
-  id: string;
-  year: number;
-  stage: "Prelims" | "Mains";
-  paper: "GS 1" | "GS 2" | "GS 3" | "GS 4" | "PubAdmin Paper 1" | "PubAdmin Paper 2";
-  unit: string;
-  topic: string;
-  subtopic: string;
-  questionType: "MCQ" | "10-Marker" | "15-Marker" | "20-Marker" | "Case Study";
-  marks: number;
-  questionText: string;
-  verification: {
-    tier: "VERIFIED_OFFICIAL_PYQ" | "VERIFIED_RELIABLE_ARCHIVE" | "PRACTICE_QUESTION";
-    verified: boolean;
-    source: string;
-    sourceUrl: string | null;
-    note: string;
-    officialAnswerVerified?: boolean;
-  };
-  syllabusMapping: {
-    paper: string;
-    subject: string;
-    topic: string;
-    subtopic: string;
-  };
-  commandWord?: string;
-  wordLimit?: number;
-  demandAnalysis?: {
-    coreDemand: string;
-    dimensions: string[];
-    commandWordGuide: string;
-    relevantConstitutionalArticles?: string[];
-    relevantCommittees?: string[];
-    relevantThinkers?: string[];
-    staticCurrentLinkage?: string;
-  };
-  recurringThemeId?: string;
-  recurringThemeLabel?: string;
-  difficulty: "Easy" | "Medium" | "Hard";
-  relatedThinkers?: string[];
-  constitutionalArticles?: string[];
-  secondArcReports?: string[];
-  options?: { key: string; text: string }[];
-  correctOption?: string;
-  explanation?: string;
-  optionAnalysis?: { optionKey: string; analysis: string; isCorrect: boolean }[];
-  modelAnswerFramework?: {
-    introduction: string;
-    bodyPoints: string[];
-    thinkersToAnchor: string[];
-    wayForward: string;
-  };
-  linkedCurrentAffairsTags?: string[];
-  practiceDrillPrompt?: string;
-}
-
-export interface RecurringThemeAnalysis {
-  themeId: string;
-  title: string;
-  paper: string;
-  unit: string;
-  frequencyCount: number;
-  yearsAsked: number[];
-  repetitionPattern: string;
-  trend: "Rising in frequency" | "Consistently recurring" | "Periodic cycle";
-  importanceScore: number;
-  samplePyqs: { id: string; year: number; question: string; source: string }[];
-  keyDemandAdvice: string;
-}
-
 export interface HistoricalPyq {
   id: string;
   year: number;
@@ -102,10 +32,6 @@ export interface HistoricalPyq {
   optionAnalysis?: Array<{ optionKey: string; analysis: string; isCorrect: boolean }>;
   historicalContext?: string;
   relatedConcept?: string;
-  verificationTier?: "VERIFIED_OFFICIAL_PYQ" | "VERIFIED_RELIABLE_ARCHIVE" | "PRACTICE_QUESTION";
-  source?: string;
-  sourceUrl?: string | null;
-  officialAnswerVerified?: boolean;
 }
 
 export type GraphNodeType = "topic" | "thinker" | "pyq" | "concept";
@@ -443,6 +369,7 @@ export interface SyllabusTopic {
 
 export interface PrelimsQuestion {
   id: string;
+  articleId?: string;
   questionNumber: number;
   subject: string;
   topic?: string;
@@ -463,6 +390,8 @@ export interface PrelimsQuestion {
   }[];
   relatedConcept?: string;
   source?: string;
+  groundingEvidence?: string[];
+  generationStatus?: "AI_PRACTICE_QUESTION" | "AI_GENERATION_REJECTED";
   difficulty: "Easy" | "Medium" | "Hard";
 }
 
@@ -493,9 +422,6 @@ export interface MainsModelAnswer {
   wayForward: string[];
   conclusion: string;
   relevantCommitteesAndArticles: string[];
-  verificationTier?: VerificationTier;
-  source?: string;
-  sourceUrl?: string | null;
 }
 
 export interface EvaluationCriteria {
@@ -541,24 +467,13 @@ export interface NewsArticle {
     | "The Hindu"
     | "PIB"
     | "The Indian Express"
-    | "Livemint"
-    | "Business Standard"
-    | "Down To Earth"
-    | "LiveLaw"
-    | "PRS Legislative"
-    | "Economic Times"
-    | "ORF"
-    | "BBC News"
-    | "Times of India"
-    | "Sansad TV"
-    | "NITI Aayog"
-    | "Hindustan Times"
-    | "Yojana & Kurukshetra"
-    | "IDSA"
-    | "Scroll.in"
     | "Government Sources"
     | "Editorials"
-    | (string & {});
+    | "Down To Earth"
+    | "Business Standard"
+    | "LiveLaw"
+    | "PRS Legislative"
+    | "ORF";
   headline: string;
   page?: string;
   gsTags: string[];
@@ -989,11 +904,6 @@ export interface NcertChapter {
 // -------------------------------------------------------------
 export type PyqEra = "19th_century" | "early_20th_century" | "post_independence" | "modern" | "all";
 
-export type VerificationTier =
-  | "VERIFIED_OFFICIAL_PYQ"
-  | "VERIFIED_RELIABLE_ARCHIVE"
-  | "PRACTICE_QUESTION";
-
 export interface HistoricalPYQ {
   id: string;
   year: number;
@@ -1012,10 +922,6 @@ export interface HistoricalPYQ {
   optionAnalysis?: { optionKey: string; analysis: string; isCorrect: boolean }[];
   historicalContext?: string;
   relatedConcept?: string;
-  verificationTier?: VerificationTier;
-  source?: string;
-  sourceUrl?: string | null;
-  officialAnswerVerified?: boolean;
 }
 
 
