@@ -700,8 +700,6 @@ export async function generateDailyCurrentAffairsMCQsAsync(
  * Synchronous MCQ generator is retained only for legacy local callers.
  * It does not fabricate questions when AI is unavailable.
  */
-
- */
 export function generateDailyCurrentAffairsMCQs(articles: NewsArticle[], count: number = 5): PrelimsQuestion[] {
   console.warn("[MCQ Generator] Synchronous generation is disabled for production safety; use generateDailyCurrentAffairsMCQsAsync().");
   return [];
