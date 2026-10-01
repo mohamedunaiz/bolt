@@ -15,6 +15,7 @@ import {
   getPipelineStatus,
   loadCurrentAffairsFromDisk,
   loadCurrentAffairsFromFirestore,
+  validatePrelimsMcq,
 } from "./server/currentAffairsPipeline";
 import {
   registerUser,
@@ -322,8 +323,14 @@ Return ONLY valid JSON matching this exact structure:
     { "key": "C", "text": "Both 1 and 2" },
     { "key": "D", "text": "Neither 1 nor 2" }
   ],
-  "correctOption": "C",
-  "explanation": "Detailed explanation of why statement 1 and 2 are correct...",
+  "correctOption": "A",
+  "explanation": "Detailed statement-by-statement explanation grounded only in the supplied article.",
+  "optionAnalysis": [
+    { "optionKey": "A", "analysis": "Why A is correct or incorrect.", "isCorrect": true },
+    { "optionKey": "B", "analysis": "Why B is correct or incorrect.", "isCorrect": false },
+    { "optionKey": "C", "analysis": "Why C is correct or incorrect.", "isCorrect": false },
+    { "optionKey": "D", "analysis": "Why D is correct or incorrect.", "isCorrect": false }
+  ],
   "upscSyllabusLink": "GS Paper 2: Federal structure and dispute resolution"
 }`;
 
@@ -343,7 +350,12 @@ Return ONLY valid JSON matching this exact structure:
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          return res.json({ success: true, mcq: parsed });
+          const validation = validatePrelimsMcq(parsed);
+          if (!validation.isValid) {
+            console.warn("[Daily MCQ] Rejected AI output:", validation.errors);
+          } else {
+            return res.json({ success: true, mcq: parsed });
+          }
         }
       } catch (geminiErr: any) {
         const reason = geminiErr?.message?.slice(0, 120) || "Service unavailable";
