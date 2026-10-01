@@ -347,7 +347,7 @@ Return ONLY valid JSON matching this exact structure:
         }
       } catch (geminiErr: any) {
         const reason = geminiErr?.message?.slice(0, 120) || "Service unavailable";
-        console.warn(`[Daily MCQ] Cloud inference unavailable (${reason}). Using curated UPSC question.`);
+        console.warn(`[Daily MCQ] Cloud inference unavailable (${reason}). No question will be fabricated.`);
       }
     }
 
