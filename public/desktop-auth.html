@@ -46,19 +46,7 @@
       signInWithPopup,
     } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
-    // Public Firebase Web SDK config (safe to embed; identical to the config
-    // already shipped in the main BOLT web/desktop client bundle).
-    const firebaseConfig = {
-      projectId: "gen-lang-client-0319965901",
-      appId: "1:233445863203:web:bd92d58a084d3fea532696",
-      apiKey: "AIzaSyBoTXMzBuAOXbsHKVTjDKIp8MGdARO4J9Q",
-      authDomain: "gen-lang-client-0319965901.firebaseapp.com",
-      storageBucket: "gen-lang-client-0319965901.firebasestorage.app",
-      messagingSenderId: "233445863203",
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
+    let auth = null;
     const provider = new GoogleAuthProvider();
 
     const params = new URLSearchParams(window.location.search);
@@ -78,7 +66,25 @@
       btn.disabled = true;
     }
 
+    async function initFirebaseConfig() {
+      try {
+        const resp = await fetch("/api/public/firebase-config");
+        const payload = await resp.json();
+        if (!resp.ok || !payload?.success || !payload?.config) {
+          throw new Error(payload?.error || "Unable to load Firebase configuration.");
+        }
+        const app = initializeApp(payload.config);
+        auth = getAuth(app);
+      } catch (err) {
+        setStatus("Sign-in is temporarily unavailable. Please contact support.", "error");
+        btn.disabled = true;
+      }
+    }
+
+    await initFirebaseConfig();
+
     btn.addEventListener("click", async () => {
+      if (!auth) return;
       btn.disabled = true;
       setStatus("Opening Google sign-in…");
       try {

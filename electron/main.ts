@@ -9,6 +9,8 @@ import logger from "./logger";
 
 const isDev = !app.isPackaged;
 const RENDERER_DIR = path.join(__dirname, "renderer");
+const WINDOWS_ICON_PATH = path.join(__dirname, "..", "build", "icons", "icon.ico");
+const WINDOWS_ICON = fs.existsSync(WINDOWS_ICON_PATH) ? WINDOWS_ICON_PATH : undefined;
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -57,7 +59,7 @@ function createSplashWindow(): void {
     movable: true,
     show: true,
     backgroundColor: "#0b0f17",
-    icon: path.join(__dirname, "..", "build", "icons", "icon.ico"),
+    icon: WINDOWS_ICON,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   splashWindow.loadFile(path.join(RENDERER_DIR, "splash.html"));
@@ -72,7 +74,7 @@ function createMainWindow(): void {
     show: false,
     backgroundColor: "#0b0f17",
     title: "BOLT",
-    icon: path.join(__dirname, "..", "build", "icons", "icon.ico"),
+    icon: WINDOWS_ICON,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
