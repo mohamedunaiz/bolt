@@ -643,7 +643,8 @@ Return ONLY valid JSON with this exact schema:
 
 /**
  * Asynchronous, AI-first current affairs MCQ pipeline.
- * Attempts real LLM synthesis for each article with automatic failover to deterministic factual grounding.
+ * AI generation is mandatory for published MCQs. If AI is unavailable or its
+ * output fails validation, the article is skipped rather than fabricating a question.
  */
 export async function generateDailyCurrentAffairsMCQsAsync(
   articles: NewsArticle[],
@@ -664,9 +665,11 @@ export async function generateDailyCurrentAffairsMCQsAsync(
       generated = null;
     }
 
-    // 2. If AI is unavailable or validation fails, use grounded factual formulation
+    // Never substitute a hand-written or unrelated fallback question.
+    // Current-affairs MCQs must be generated from and validated against the article.
     if (!generated) {
-      generated = generateGroundedFactualMcq(art, i);
+      console.warn(`[MCQ Generator] Skipping article "${art.headline}" because no validated AI question was produced.`);
+      continue;
     }
 
     // Deduplication check
@@ -688,44 +691,20 @@ export async function generateDailyCurrentAffairsMCQsAsync(
   // Merge and retain recent validated MCQs
   const mergedMcqs = [...mcqs, ...cachedMcqs].slice(0, 50);
   cachedMcqs = mergedMcqs;
-  saveCurrentAffairsToDisk(cachedArticles, cachedMcqs);
+  // Firestore is authoritative in production; disk persistence is only for local runs.
+  await saveCurrentAffairsToFirestore(cachedArticles, cachedMcqs);
   return mcqs;
 }
 
 /**
- * Synchronous MCQ generator conforming to pipeline signature,
- * executing grounded factual formulation with strict validation.
+ * Synchronous MCQ generator is retained only for legacy local callers.
+ * It does not fabricate questions when AI is unavailable.
+ */
+
  */
 export function generateDailyCurrentAffairsMCQs(articles: NewsArticle[], count: number = 5): PrelimsQuestion[] {
-  const targetArticles = articles.filter((a) => a.prelimsTag || a.upscRelevance?.prelimsFact).slice(0, count * 2);
-  const mcqs: PrelimsQuestion[] = [];
-  const existingSignatures = new Set(cachedMcqs.map((m) => m.questionText.slice(0, 60).toLowerCase().trim()));
-
-  for (let i = 0; i < Math.min(count, targetArticles.length); i++) {
-    const art = targetArticles[i];
-    const candidateMcq = generateGroundedFactualMcq(art, i);
-
-    // Deduplication check
-    const sig = candidateMcq.questionText.slice(0, 60).toLowerCase().trim();
-    if (existingSignatures.has(sig)) {
-      continue;
-    }
-    existingSignatures.add(sig);
-
-    // Strict validation
-    const validation = validatePrelimsMcq(candidateMcq);
-    if (validation.isValid) {
-      mcqs.push(candidateMcq);
-    } else {
-      console.warn(`MCQ rejected due to validation failure:`, validation.errors);
-    }
-  }
-
-  // Merge and retain recent validated MCQs
-  const mergedMcqs = [...mcqs, ...cachedMcqs].slice(0, 50);
-  cachedMcqs = mergedMcqs;
-  saveCurrentAffairsToDisk(cachedArticles, cachedMcqs);
-  return mcqs;
+  console.warn("[MCQ Generator] Synchronous generation is disabled for production safety; use generateDailyCurrentAffairsMCQsAsync().");
+  return [];
 }
 
 export function getPipelineStatus(): PipelineStatus {
