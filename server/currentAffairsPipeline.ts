@@ -424,6 +424,24 @@ export function validatePrelimsMcq(mcq: any): McqValidationResult {
     errors.push("explanation must be at least 15 characters long.");
   }
 
+  // The declared correct answer must be represented consistently in optionAnalysis.
+  if (!Array.isArray(mcq.optionAnalysis) || mcq.optionAnalysis.length !== 4) {
+    errors.push("optionAnalysis must contain exactly 4 entries.");
+  } else {
+    const analysisKeys = mcq.optionAnalysis.map((o: any) => o?.optionKey);
+    const analysisValidKeys = ["A", "B", "C", "D"];
+    if (!analysisValidKeys.every((k) => analysisKeys.includes(k)) || new Set(analysisKeys).size !== 4) {
+      errors.push("optionAnalysis keys must exactly be 'A', 'B', 'C', and 'D'.");
+    }
+    const correctAnalyses = mcq.optionAnalysis.filter((o: any) => o?.isCorrect === true);
+    if (correctAnalyses.length !== 1 || correctAnalyses[0]?.optionKey !== mcq.correctOption) {
+      errors.push("Exactly one optionAnalysis entry must be marked correct and it must match correctOption.");
+    }
+    if (mcq.optionAnalysis.some((o: any) => typeof o?.analysis !== "string" || o.analysis.trim().length < 10)) {
+      errors.push("Every optionAnalysis entry must contain a meaningful analysis.");
+    }
+  }
+
   return {
     isValid: errors.length === 0,
     errors,
