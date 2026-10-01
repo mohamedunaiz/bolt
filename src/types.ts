@@ -422,6 +422,8 @@ export interface MainsModelAnswer {
   wayForward: string[];
   conclusion: string;
   relevantCommitteesAndArticles: string[];
+  verificationTier?: "VERIFIED_OFFICIAL_PYQ" | "VERIFIED_RELIABLE_ARCHIVE" | "PRACTICE_QUESTION";
+  source?: string;
 }
 
 export interface EvaluationCriteria {
@@ -473,7 +475,15 @@ export interface NewsArticle {
     | "Business Standard"
     | "LiveLaw"
     | "PRS Legislative"
-    | "ORF";
+    | "ORF"
+    | "Livemint"
+    | "Economic Times"
+    | "Times of India"
+    | "Hindustan Times"
+    | "BBC News"
+    | "Sansad TV"
+    | "NITI Aayog"
+    | "Yojana & Kurukshetra";
   headline: string;
   page?: string;
   gsTags: string[];
@@ -507,6 +517,91 @@ export interface NewsArticle {
   contentHash?: string;
   provenanceType?: "LIVE_SOURCE" | "CACHED_SOURCE" | "FALLBACK_DATA";
   isLive?: boolean;
+}
+
+export type VerificationTier =
+  | "VERIFIED_OFFICIAL_PYQ"
+  | "VERIFIED_RELIABLE_ARCHIVE"
+  | "PRACTICE_QUESTION";
+
+export interface PyqVerification {
+  tier: VerificationTier;
+  verified: boolean;
+  source: string;
+  sourceUrl?: string | null;
+  note?: string;
+  officialAnswerVerified?: boolean;
+}
+
+export interface UpscPyqItem {
+  id: string;
+  year: number;
+  stage: "Prelims" | "Mains";
+  paper: "GS 1" | "GS 2" | "GS 3" | "GS 4" | "PubAdmin Paper 1" | "PubAdmin Paper 2";
+  unit: string;
+  subject?: string;
+  topic: string;
+  subtopic: string;
+  marks: number;
+  questionType: "MCQ" | "10-Marker" | "15-Marker" | "20-Marker" | "Case Study";
+  difficulty: "Easy" | "Medium" | "Hard";
+  questionText: string;
+  syllabusMapping?: {
+    paper: string;
+    subject: string;
+    topic: string;
+    subtopic: string;
+  };
+  commandWord?: string;
+  wordLimit?: number;
+  demandAnalysis?: {
+    coreDemand: string;
+    dimensions: string[];
+    commandWordGuide: string;
+    relevantConstitutionalArticles?: string[];
+    relevantCommittees?: string[];
+    relevantThinkers?: string[];
+    staticCurrentLinkage?: string;
+  };
+  options?: Array<{ key: string; text: string }>;
+  correctOption?: "A" | "B" | "C" | "D";
+  explanation?: string;
+  optionAnalysis?: Array<{ optionKey: string; analysis: string; isCorrect: boolean }>;
+  modelAnswerFramework?: {
+    introduction: string;
+    bodyPoints: string[];
+    thinkersToAnchor: string[];
+    wayForward: string;
+  };
+  recurringThemeId?: string;
+  recurringThemeLabel?: string;
+  relatedThinkers?: string[];
+  practiceDrillPrompt?: string;
+  linkedCurrentAffairsTags?: string[];
+  constitutionalArticles?: string[];
+  secondArcReports?: string[];
+  historicalContext?: string;
+  relatedConcept?: string;
+  exam?: string;
+  question?: string;
+  source?: string;
+  answer?: string;
+  keywords?: string[];
+  verification: PyqVerification;
+}
+
+export interface RecurringThemeAnalysis {
+  themeId: string;
+  title: string;
+  paper: string;
+  unit: string;
+  frequencyCount: number;
+  yearsAsked: number[];
+  trend: "Rising in frequency" | "Consistently recurring" | "Periodic cycle";
+  importanceScore: number;
+  repetitionPattern: string;
+  samplePyqs: { id: string; year: number; question: string; source: string }[];
+  keyDemandAdvice: string;
 }
 
 export interface ChatMessage {
@@ -923,6 +1018,4 @@ export interface HistoricalPYQ {
   historicalContext?: string;
   relatedConcept?: string;
 }
-
-
 

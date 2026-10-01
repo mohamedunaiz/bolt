@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import { getAuth } from "firebase-admin/auth";
+import { getApps } from "firebase-admin/app";
+import { initFirebaseAdmin } from "./firebaseAdmin";
 
 export interface AuthenticatedUser {
   uid: string;
@@ -16,116 +19,103 @@ declare global {
   }
 }
 
-const JWT_SECRET = process.env.BOLT_JWT_SECRET || "bolt_prod_secret_token_signing_key_2026";
-const ADMIN_EMAILS = new Set([
-  "mohamedunaiz001@gmail.com",
-  "autumnr092006@gmail.com",
-  "admin@bolt.internal",
-  "admin@upsc-bolt.org",
-]);
+const JWT_SECRET =
+  process.env.BOLT_JWT_SECRET ||
+  (process.env.NODE_ENV === "production" ? undefined : "bolt_dev_only_secret_change_me");
+const ALLOW_TEST_TOKENS = process.env.NODE_ENV !== "production" || process.env.BOLT_ALLOW_TEST_TOKENS === "true";
 
-/**
- * Generate a signed session token for verified users
- */
-export function generateSignedSessionToken(user: { uid: string; email?: string; role?: string }): string {
-  const payload = {
-    uid: user.uid,
-    email: user.email || "",
-    role: user.role || (ADMIN_EMAILS.has(user.email || "") ? "admin" : "student"),
-    isAdmin: user.role === "admin" || ADMIN_EMAILS.has(user.email || ""),
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600, // 7 days
-  };
-
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto
-    .createHmac("sha256", JWT_SECRET)
-    .update(payloadB64)
-    .digest("base64url");
-
-  return `bolt_${payloadB64}.${signature}`;
+function getStaticAdminEmails(): Set<string> {
+  const configured = process.env.BOLT_ADMIN_EMAILS || "";
+  return new Set(
+    configured
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }
 
 /**
- * Verify a token string (Supports Firebase ID Tokens, BOLT Signed Session Tokens, and Test Harness Tokens)
+ * Generate a signed local-development session token for non-production use.
  */
-export function verifyToken(token: string): AuthenticatedUser | null {
-  if (!token || typeof token !== "string") return null;
-
-  const cleanToken = token.trim().replace(/^Bearer\s+/i, "");
-  if (!cleanToken) return null;
-
-  // 1. Check BOLT signed session token
-  if (cleanToken.startsWith("bolt_")) {
-    const raw = cleanToken.slice(5);
-    const parts = raw.split(".");
-    if (parts.length === 2) {
-      const [payloadB64, signature] = parts;
-      const expectedSig = crypto
-        .createHmac("sha256", JWT_SECRET)
-        .update(payloadB64)
-        .digest("base64url");
-
-      if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) {
-        try {
-          const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8"));
-          if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-            return null; // Expired
-          }
-          return {
-            uid: payload.uid,
-            email: payload.email,
-            role: payload.role || (payload.isAdmin ? "admin" : "student"),
-            isAdmin: Boolean(payload.isAdmin || payload.role === "admin" || ADMIN_EMAILS.has(payload.email || "")),
-          };
-        } catch {
-          return null;
-        }
-      }
-    }
+export function generateSignedSessionToken(user: { uid: string; email?: string; role?: string }): string {
+  if (!JWT_SECRET) {
+    throw new Error("BOLT_JWT_SECRET is required to generate signed session tokens.");
   }
 
-  // 2. Check Firebase ID Token (JWT standard)
-  const jwtParts = cleanToken.split(".");
-  if (jwtParts.length === 3) {
-    try {
-      const payloadJson = Buffer.from(jwtParts[1], "base64url").toString("utf-8");
-      const decoded = JSON.parse(payloadJson);
+  const adminEmails = getStaticAdminEmails();
+  const email = (user.email || "").toLowerCase();
+  const payload = {
+    uid: user.uid,
+    email,
+    role: user.role || (adminEmails.has(email) ? "admin" : "student"),
+    isAdmin: user.role === "admin" || adminEmails.has(email),
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+  };
 
-      // Verify basic Firebase token shape
-      const isFirebaseToken =
-        decoded.iss?.startsWith("https://securetoken.google.com/") ||
-        decoded.aud === "gen-lang-client-0319965901" ||
-        (decoded.sub && decoded.auth_time);
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", JWT_SECRET).update(payloadB64).digest("base64url");
+  return `bolt_${payloadB64}.${signature}`;
+}
 
-      if (isFirebaseToken && decoded.sub) {
-        // Verify expiry
-        if (decoded.exp && decoded.exp < Math.floor(Date.now() / 1000)) {
-          return null;
-        }
+function verifySignedSessionToken(token: string): AuthenticatedUser | null {
+  if (!JWT_SECRET || !token.startsWith("bolt_")) return null;
+  const raw = token.slice(5);
+  const parts = raw.split(".");
+  if (parts.length !== 2) return null;
 
-        const email = decoded.email || "";
-        const isAdmin = Boolean(
-          decoded.admin === true ||
-          decoded.role === "admin" ||
-          ADMIN_EMAILS.has(email.toLowerCase())
-        );
+  const [payloadB64, signature] = parts;
+  const expectedSig = crypto.createHmac("sha256", JWT_SECRET).update(payloadB64).digest("base64url");
+  if (signature.length !== expectedSig.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) return null;
 
-        return {
-          uid: decoded.sub,
-          email,
-          role: isAdmin ? "admin" : "student",
-          isAdmin,
-        };
-      }
-    } catch {
-      // Not a valid JSON payload
-    }
+  try {
+    const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8"));
+    if (!payload?.uid) return null;
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    const email = typeof payload.email === "string" ? payload.email : "";
+    return {
+      uid: payload.uid,
+      email,
+      role: payload.role === "admin" ? "admin" : "student",
+      isAdmin: payload.role === "admin" || payload.isAdmin === true,
+    };
+  } catch {
+    return null;
   }
+}
 
-  // 3. Automated Test / Development Tokens (for CI, test runners, and automated benchmark verification)
-  if (process.env.NODE_ENV !== "production" || process.env.BOLT_ALLOW_TEST_TOKENS === "true") {
-    if (cleanToken === "test-admin-token" || cleanToken.startsWith("admin-test-")) {
+async function verifyFirebaseToken(token: string): Promise<AuthenticatedUser | null> {
+  try {
+    initFirebaseAdmin();
+    if (getApps().length === 0) return null;
+    const decoded = await getAuth().verifyIdToken(token, true);
+    const email = (decoded.email || "").toLowerCase();
+    const adminEmails = getStaticAdminEmails();
+    const isAdmin = decoded.admin === true || decoded.role === "admin" || adminEmails.has(email);
+    return {
+      uid: decoded.uid,
+      email: decoded.email,
+      role: isAdmin ? "admin" : "student",
+      isAdmin,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function verifyAuthHeader(authHeader: string): Promise<AuthenticatedUser | null> {
+  const token = authHeader.trim().replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+
+  const signed = verifySignedSessionToken(token);
+  if (signed) return signed;
+
+  const firebaseUser = await verifyFirebaseToken(token);
+  if (firebaseUser) return firebaseUser;
+
+  if (ALLOW_TEST_TOKENS) {
+    if (token === "test-admin-token" || token.startsWith("admin-test-")) {
       return {
         uid: "admin_test_operator",
         email: "admin@bolt.internal",
@@ -133,8 +123,8 @@ export function verifyToken(token: string): AuthenticatedUser | null {
         isAdmin: true,
       };
     }
-    if (cleanToken.startsWith("test-token-") || cleanToken.startsWith("test-user-")) {
-      const uid = cleanToken.replace(/^test-(?:token|user)-/, "") || "test_student";
+    if (token.startsWith("test-token-") || token.startsWith("test-user-")) {
+      const uid = token.replace(/^test-(?:token|user)-/, "") || "test_student";
       return {
         uid,
         email: `${uid}@upsc-bolt.test`,
@@ -147,36 +137,27 @@ export function verifyToken(token: string): AuthenticatedUser | null {
   return null;
 }
 
-/**
- * Middleware: Extract and attach user without rejecting if token is missing
- */
-export function authenticateToken(req: Request, _res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization || (req.headers["x-auth-token"] as string);
+export async function authenticateToken(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  const authHeader = req.headers.authorization || (req.headers["x-auth-token"] as string | undefined);
   if (authHeader) {
-    const user = verifyToken(authHeader);
-    if (user) {
-      req.user = user;
-    }
+    const user = await verifyAuthHeader(authHeader);
+    if (user) req.user = user;
   }
   next();
 }
 
-/**
- * Middleware: Require verified user authentication
- */
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization || (req.headers["x-auth-token"] as string);
-
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const authHeader = req.headers.authorization || (req.headers["x-auth-token"] as string | undefined);
   if (!authHeader) {
     res.status(401).json({
       success: false,
-      error: "Authentication required. Missing Bearer Authorization header.",
+      error: "Authentication required.",
       code: "AUTH_REQUIRED",
     });
     return;
   }
 
-  const user = verifyToken(authHeader);
+  const user = await verifyAuthHeader(authHeader);
   if (!user) {
     res.status(401).json({
       success: false,
@@ -190,11 +171,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
-/**
- * Middleware: Require administrator role
- */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  requireAuth(req, res, () => {
+  void requireAuth(req, res, () => {
     if (!req.user || !req.user.isAdmin) {
       res.status(403).json({
         success: false,
@@ -207,13 +185,9 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   });
 }
 
-/**
- * Middleware: Verify resource owner (or admin override)
- * Prevents User A from mutating or accessing User B's resources
- */
-export function requireOwner(paramName: string = "userId") {
+export function requireOwner(paramName = "userId") {
   return (req: Request, res: Response, next: NextFunction): void => {
-    requireAuth(req, res, () => {
+    void requireAuth(req, res, () => {
       if (!req.user) return;
 
       const targetUserId =

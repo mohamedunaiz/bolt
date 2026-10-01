@@ -183,12 +183,12 @@ cd bolt
 ### 2. Install
 
 ```bash
-npm install
+npm ci
 ```
 
 ### 3. Configure environment
 
-Copy `.env.example` to `.env` and provide the variables required by your environment.
+Copy `.env.example` to `.env` and provide only your own credentials.
 
 ```bash
 # macOS/Linux
@@ -198,7 +198,7 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-Keep secrets server-side and never commit `.env`.
+Keep secrets server-side and never commit `.env`. `VITE_*` values are public client config only.
 
 ### 4. Run locally
 
@@ -213,6 +213,19 @@ npm run lint
 npm run build
 npm start
 ```
+
+### Required Vercel environment variables
+
+- Server: `BOLT_JWT_SECRET`, `GEMINI_API_KEY`, `FIREBASE_PROJECT_ID`, and one Firebase Admin credential method (`FIREBASE_SERVICE_ACCOUNT` **or** `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`).
+- Client: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`.
+- Scheduler (if used): `NEWS_CRON_SECRET`, `SCHEDULER_TRIGGER_SECRET`.
+
+### Firebase production checks
+
+- Enable Firebase Auth providers used by BOLT (Google + Email/Password).
+- Add `bolt-maddy.vercel.app` to Firebase Authentication authorized domains.
+- Deploy `firestore.rules` and `firestore.indexes.json` from this repository.
+- Rotate any historical credentials that were ever committed to Git history.
 
 ## Verification
 

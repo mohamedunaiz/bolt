@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 
 let isInitialized = false;
+let firebaseAdminInitializationError: Error | null = null;
 
 /**
  * Initialize Firebase Admin SDK for cryptographic token verification & claims management.
@@ -13,6 +14,7 @@ let isInitialized = false;
 export function initFirebaseAdmin(): App | null {
   if (isInitialized || getApps().length > 0) {
     isInitialized = true;
+    firebaseAdminInitializationError = null;
     return getApps()[0] || null;
   }
 
@@ -37,10 +39,12 @@ export function initFirebaseAdmin(): App | null {
           projectId: projectId || sa.project_id,
         });
         isInitialized = true;
+        firebaseAdminInitializationError = null;
         console.log("Firebase Admin initialized with service account.");
         return app;
       } catch (err: any) {
-        console.warn("Failed parsing FIREBASE_SERVICE_ACCOUNT:", err.message);
+        firebaseAdminInitializationError = err instanceof Error ? err : new Error(String(err));
+        console.warn("Failed parsing FIREBASE_SERVICE_ACCOUNT.");
       }
     }
 
@@ -52,20 +56,25 @@ export function initFirebaseAdmin(): App | null {
         projectId,
       });
       isInitialized = true;
+      firebaseAdminInitializationError = null;
       console.log("Firebase Admin initialized with Firebase credential environment variables.");
       return app;
     }
 
     // Application default credentials remain useful for local development and emulators.
-    const app = initializeApp({ projectId: projectId || "bolt-87397" });
+    const app = projectId ? initializeApp({ projectId }) : initializeApp();
     isInitialized = true;
-    console.log("Firebase Admin initialized with application default credentials for project:", projectId || "bolt-87397");
+    firebaseAdminInitializationError = null;
+    console.log("Firebase Admin initialized with application default credentials.");
     return app;
   } catch (e: any) {
-    console.warn("Firebase Admin initialization notice (operating in fallback mode):", e.message);
+    firebaseAdminInitializationError = e instanceof Error ? e : new Error(String(e));
+    console.warn("Firebase Admin initialization notice (operating in fallback mode).");
     try {
       if (getApps().length === 0) {
-        return initializeApp();
+        const app = initializeApp();
+        isInitialized = true;
+        return app;
       }
       isInitialized = true;
       return getApps()[0] || null;
@@ -102,6 +111,11 @@ export function getAdminFirestore(): Firestore | null {
       return null;
     }
   }
+
+}
+
+export function getFirebaseAdminInitializationError(): Error | null {
+  return firebaseAdminInitializationError;
 }
 
 let firestoreHealthCache: {

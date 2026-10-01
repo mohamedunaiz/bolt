@@ -3,6 +3,7 @@ import { createServer as createHttpServer } from "http";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { randomUUID } from "crypto";
 import { execSync, execFileSync } from "child_process";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
@@ -15,6 +16,7 @@ import {
   getPipelineStatus,
   loadCurrentAffairsFromDisk,
   loadCurrentAffairsFromFirestore,
+  validatePrelimsMcq,
 } from "./server/currentAffairsPipeline";
 import {
   registerUser,
@@ -80,7 +82,7 @@ initFirebaseAdmin();
 
 const app = express();
 app.set("trust proxy", 1);
-const PORT = 3000;
+const PORT = Number.parseInt(process.env.PORT || "3000", 10);
 
 // Production Monitoring & Telemetry Counters
 let totalRequestsCount = 0;
@@ -100,6 +102,19 @@ app.use((_req, res, next) => {
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+app.use((req, res, next) => {
+  const requestId = req.headers["x-request-id"]?.toString() || randomUUID();
+  res.setHeader("X-Request-Id", requestId);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; connect-src 'self' https:; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  }
+  next();
+});
 
 // Mount auth token extractor and general API rate limiter
 app.use(authenticateToken);
@@ -299,6 +314,29 @@ app.get("/api/ready", (_req, res) => {
   res.json({ ready: true, version: "v3.0-prod" });
 });
 
+app.get("/api/public/firebase-config", (_req, res) => {
+  const config = {
+    apiKey: process.env.VITE_FIREBASE_API_KEY || "",
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || "",
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: process.env.VITE_FIREBASE_APP_ID || "",
+  };
+
+  const missing = Object.entries(config)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+  if (missing.length > 0) {
+    return res.status(503).json({
+      success: false,
+      error: "Firebase public configuration is incomplete.",
+      missing,
+    });
+  }
+  return res.json({ success: true, config });
+});
+
 // Daily Current Affairs -> MCQ Generation Pipeline Endpoint (invokes AI generation — auth + rate limited)
 app.post("/api/bolt/generate-daily-mcq", requireAuth, aiRateLimiter, async (req, res) => {
   try {
@@ -343,18 +381,29 @@ Return ONLY valid JSON matching this exact structure:
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
+          const validation = validatePrelimsMcq(parsed);
+          if (!validation.isValid) {
+            return res.status(422).json({
+              success: false,
+              status: "AI_GENERATION_REJECTED",
+              error: "Generated MCQ failed validation checks.",
+              validationErrors: validation.errors,
+            });
+          }
           return res.json({ success: true, mcq: parsed });
         }
       } catch (geminiErr: any) {
         const reason = geminiErr?.message?.slice(0, 120) || "Service unavailable";
-        console.warn(`[Daily MCQ] Cloud inference unavailable (${reason}). Using curated UPSC question.`);
+        console.warn(`[Daily MCQ] Cloud inference unavailable (${reason}).`);
       }
     }
 
-    return res.status(422).json({
+    return res.status(ai ? 422 : 503).json({
       success: false,
       status: "AI_GENERATION_REJECTED",
-      error: "No validated article-grounded practice question could be generated.",
+      error: ai
+        ? "No validated article-grounded practice question could be generated."
+        : "Gemini service is unavailable.",
       articleId: req.body.articleId || null,
     });
   } catch (err: any) {
@@ -2544,7 +2593,7 @@ app.post("/api/ai/stream", requireAuth, aiRateLimiter, async (req, res) => {
 // ----------------------------------------------------
 // VITE MIDDLEWARE SETUP
 // ----------------------------------------------------
-  async function startServer() {
+async function startServer() {
   const httpServer = createHttpServer(app);
 
   if (process.env.NODE_ENV !== "production") {
@@ -2572,4 +2621,11 @@ app.post("/api/ai/stream", requireAuth, aiRateLimiter, async (req, res) => {
   });
 }
 
-startServer();
+if (!process.env.VERCEL && process.env.BOLT_SERVERLESS !== "true") {
+  startServer().catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  });
+}
+
+export { app, startServer };
