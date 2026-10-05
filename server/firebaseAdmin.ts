@@ -5,6 +5,11 @@ import fs from "fs";
 import path from "path";
 
 let isInitialized = false;
+let firebaseAdminInitializationError: Error | null = null;
+
+export function getFirebaseAdminInitializationError(): Error | null {
+  return firebaseAdminInitializationError;
+}
 
 /**
  * Initialize Firebase Admin SDK for cryptographic token verification & claims management.
@@ -56,22 +61,22 @@ export function initFirebaseAdmin(): App | null {
       return app;
     }
 
-    // Application default credentials remain useful for local development and emulators.
-    const app = initializeApp({ projectId: projectId || "bolt-87397" });
+    if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
+      throw new Error("Firebase Admin credentials are required in production.");
+    }
+
+    if (!projectId) {
+      throw new Error("Firebase Admin credentials are not configured.");
+    }
+
+    const app = initializeApp({ projectId });
     isInitialized = true;
-    console.log("Firebase Admin initialized with application default credentials for project:", projectId || "bolt-87397");
+    console.log("Firebase Admin initialized with application default credentials for project:", projectId);
     return app;
   } catch (e: any) {
-    console.warn("Firebase Admin initialization notice (operating in fallback mode):", e.message);
-    try {
-      if (getApps().length === 0) {
-        return initializeApp();
-      }
-      isInitialized = true;
-      return getApps()[0] || null;
-    } catch {
-      return null;
-    }
+    firebaseAdminInitializationError = e instanceof Error ? e : new Error(String(e?.message || e));
+    console.error("Firebase Admin initialization failed:", firebaseAdminInitializationError.message);
+    return null;
   }
 }
 

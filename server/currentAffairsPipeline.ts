@@ -158,7 +158,7 @@ export async function saveCurrentAffairsToFirestore(
 
   try {
     const db = getAdminFirestore();
-    if (!db) return;
+    if (!db) throw new Error("Firestore is not configured; current-affairs cache was not written.");
     console.log("[CURRENT-AFFAIRS] writing Firestore current_affairs/latest");
     await db
       .collection(CURRENT_AFFAIRS_COLLECTION)
@@ -173,7 +173,8 @@ export async function saveCurrentAffairsToFirestore(
       );
     console.log("[CURRENT-AFFAIRS] Successfully saved to Firestore current_affairs/latest");
   } catch (error: any) {
-    console.warn("[CURRENT-AFFAIRS] Firestore write notice:", error?.message || error);
+    console.error("[CURRENT-AFFAIRS] Firestore write failed:", error?.message || error);
+    throw error;
   }
 }
 
@@ -448,12 +449,9 @@ export function validatePrelimsMcq(mcq: any): McqValidationResult {
   };
 }
 
-/**
- * Deterministic, grounded UPSC MCQ generator strictly built from source article facts.
- * Avoids any static templates or fake answers; dynamically calibrates statements,
- * distractors, correct keys (A, B, C, or D), and statement-by-statement option analyses.
- */
-export function generateGroundedFactualMcq(art: NewsArticle, index: number): PrelimsQuestion {
+/* Unsafe deterministic MCQ generation was removed. Current-affairs questions must come from validated AI output. */
+/* legacy generator removed */
+/*
   const gsTag = art.gsTags[0] || "GS 2: Polity";
   const subject = gsTag.includes("GS 1")
     ? "Modern History & Geography"
@@ -550,6 +548,7 @@ export function generateGroundedFactualMcq(art: NewsArticle, index: number): Pre
     difficulty: index % 2 === 0 ? "Medium" : "Hard",
   };
 }
+*/
 
 /**
  * AI-powered UPSC Prelims MCQ Generator using Gemini with failover.
@@ -723,8 +722,12 @@ export function generateDailyCurrentAffairsMCQs(articles: NewsArticle[], count: 
   return [];
 }
 
+export async function getPipelineStatusFromFirestore(): Promise<PipelineStatus> {
+  await loadCurrentAffairsFromFirestore();
+  return getPipelineStatus();
+}
+
 export function getPipelineStatus(): PipelineStatus {
-  loadCurrentAffairsFromDisk();
   const todayStr = new Date().toISOString().split("T")[0];
   const todayCount = cachedArticles.filter(a => a.date?.includes(todayStr) || a.date?.includes("Today")).length;
   const distinctSources = Array.from(new Set(cachedArticles.map((a) => a.source).filter(Boolean)));

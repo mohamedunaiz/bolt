@@ -13,6 +13,7 @@ import {
   generateDailyCurrentAffairsMCQs,
   generateDailyCurrentAffairsMCQsAsync,
   getPipelineStatus,
+  getPipelineStatusFromFirestore,
   loadCurrentAffairsFromDisk,
   loadCurrentAffairsFromFirestore,
   validatePrelimsMcq,
@@ -79,7 +80,7 @@ dotenv.config();
 // Initialize Firebase Admin SDK for cryptographic token verification & Firestore persistence
 initFirebaseAdmin();
 
-const app = express();
+export const app = express();
 app.set("trust proxy", 1);
 const PORT = 3000;
 
@@ -128,7 +129,7 @@ async function buildHealthSnapshot() {
     pythonStatus = "unavailable";
   }
 
-  const pipelineStatus = getPipelineStatus();
+  const pipelineStatus = await getPipelineStatusFromFirestore();
   const firestoreHealth = await checkFirestoreHealth(true);
   const t0 = Date.now();
   const docCount = listDocuments().length;
@@ -1497,9 +1498,9 @@ app.post("/api/news/pipeline/run", requireAdmin, heavyTaskLimiter, async (_req, 
   }
 });
 
-app.get("/api/news/pipeline/status", requireAuth, (_req, res) => {
+app.get("/api/news/pipeline/status", requireAuth, async (_req, res) => {
   try {
-    const status = getPipelineStatus();
+    const status = await getPipelineStatusFromFirestore();
     res.json({
       success: true,
       status,
@@ -1533,7 +1534,7 @@ app.get("/api/news/daily-current-affairs", requireAuth, async (_req, res) => {
       const pipelineResult = await executeNewsIngestionPipeline();
       articles = pipelineResult.articles;
     }
-    const status = getPipelineStatus();
+    const status = await getPipelineStatusFromFirestore();
     res.json({
       success: true,
       count: articles.length,
@@ -1549,7 +1550,7 @@ app.get("/api/news/daily-current-affairs", requireAuth, async (_req, res) => {
 app.post("/api/news/daily-current-affairs/sync", requireAdmin, heavyTaskLimiter, async (_req, res) => {
   try {
     const pipelineResult = await executeNewsIngestionPipeline();
-    const status = getPipelineStatus();
+    const status = await getPipelineStatusFromFirestore();
     res.json({
       success: true,
       articles: pipelineResult.articles,
@@ -2584,4 +2585,6 @@ app.post("/api/ai/stream", requireAuth, aiRateLimiter, async (req, res) => {
   });
 }
 
-startServer();
+  if (process.env.VERCEL !== "1") {
+    startServer();
+  }
