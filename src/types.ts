@@ -1,3 +1,12 @@
+// PYQ intelligence types are defined alongside their data in server/pyqIntelligence.ts and
+// re-exported here (type-only, erased at build time) so UI code can import them from "../types".
+import type { VerificationTier } from "../server/pyqIntelligence";
+export type {
+  VerificationTier,
+  UpscPyqItem,
+  RecurringThemeAnalysis,
+} from "../server/pyqIntelligence";
+
 export type NavigationTab =
   | "home"
   | "learn"
@@ -422,6 +431,10 @@ export interface MainsModelAnswer {
   wayForward: string[];
   conclusion: string;
   relevantCommitteesAndArticles: string[];
+  /** Provenance tier of the underlying question (see server/pyqIntelligence.ts). */
+  verificationTier?: VerificationTier;
+  /** Human-readable source citation, e.g. "UPSC CSE Mains 2023". */
+  source?: string;
 }
 
 export interface EvaluationCriteria {
@@ -473,7 +486,15 @@ export interface NewsArticle {
     | "Business Standard"
     | "LiveLaw"
     | "PRS Legislative"
-    | "ORF";
+    | "ORF"
+    | "Livemint"
+    | "Economic Times"
+    | "Times of India"
+    | "Hindustan Times"
+    | "BBC News"
+    | "Sansad TV"
+    | "NITI Aayog"
+    | "Yojana & Kurukshetra";
   headline: string;
   page?: string;
   gsTags: string[];

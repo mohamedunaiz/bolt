@@ -117,13 +117,22 @@ async function runAcceptanceSuite() {
       ],
       correctOption: "C",
       explanation: "The 73rd Constitutional Amendment Act of 1992 added Part IX relating to Panchayats.",
+      // The validator requires one analysis entry per option, exactly one marked correct.
+      optionAnalysis: [
+        { optionKey: "A", analysis: "Incorrect: the 42nd Amendment is the 'mini-Constitution'.", isCorrect: false },
+        { optionKey: "B", analysis: "Incorrect: the 44th Amendment restored civil liberties.", isCorrect: false },
+        { optionKey: "C", analysis: "Correct: the 73rd Amendment added Part IX (Panchayats).", isCorrect: true },
+        { optionKey: "D", analysis: "Incorrect: the 86th Amendment concerns education rights.", isCorrect: false },
+      ],
     };
 
     const val = validatePrelimsMcq(testMcq);
-    const passed = Boolean(val.isValid || (val as any).valid) && testMcq.correctOption === "C";
+    const passed = val.isValid === true && testMcq.correctOption === "C";
     return {
       passed,
-      message: `Prelims MCQ validated. Correct key verified with syllabus explanation.`,
+      message: passed
+        ? `Prelims MCQ validated. Correct key verified with syllabus explanation.`
+        : `Prelims MCQ failed validation: ${val.errors.join(" | ")}`,
     };
   });
 

@@ -27,8 +27,7 @@ import {
   getUserProgress,
   getUserProgressAsync,
 } from "./server/userStore";
-import { initFirebaseAdmin, setAdminCustomClaim, checkFirestoreHealth } from "./server/firebaseAdmin";
-import { getFirestore } from "firebase-admin/firestore";
+import { initFirebaseAdmin, getAdminFirestore, setAdminCustomClaim, checkFirestoreHealth } from "./server/firebaseAdmin";
 import {
   listDocuments,
   getDocumentById,
@@ -1106,33 +1105,77 @@ app.get("/api/bolt/topic-diagnostic", requireAuth, (req, res) => {
 // firestore.rules already defines the correct schema for this data (public read, admin-only
 // write on knowledge_nodes / knowledge_edges / knowledge_clusters) but the server never
 // actually used it. This migrates the implementation to match those rules, using the
-// Firebase Admin SDK that initFirebaseAdmin() already initializes at module load.
-const kgDb = getFirestore();
+// Firebase Admin SDK, obtained lazily through the centralized getAdminFirestore() helper.
 const KG_NODES_COLLECTION = "knowledge_nodes";
 const KG_EDGES_COLLECTION = "knowledge_edges";
 const KG_CLUSTERS_COLLECTION = "knowledge_clusters";
 
-async function getKnowledgeGraphStore(): Promise<{ nodes: any[]; edges: any[]; clusters: any[]; updatedAt?: string }> {
-  try {
-    const [nodesSnap, edgesSnap, clustersSnap] = await Promise.all([
-      kgDb.collection(KG_NODES_COLLECTION).get(),
-      kgDb.collection(KG_EDGES_COLLECTION).get(),
-      kgDb.collection(KG_CLUSTERS_COLLECTION).get(),
-    ]);
+class KnowledgeGraphUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "KnowledgeGraphUnavailableError";
+  }
+}
 
-    if (!nodesSnap.empty || !edgesSnap.empty) {
-      return {
-        nodes: nodesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        edges: edgesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        clusters: clustersSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        updatedAt: new Date().toISOString(),
-      };
+const isProductionRuntime = () =>
+  process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+
+// Resolve Firestore on demand (never at module import) so a missing/invalid Firebase Admin
+// configuration cannot crash app startup (e.g. on Vercel). Callers get a controlled error.
+function getKgDb() {
+  const db = getAdminFirestore();
+  if (!db) {
+    throw new KnowledgeGraphUnavailableError(
+      "Firestore is not configured; the knowledge graph is unavailable."
+    );
+  }
+  return db;
+}
+
+// Map errors to HTTP responses: 503 when the database is unavailable, 500 otherwise.
+function sendKgError(res: express.Response, e: any, fallbackMessage: string) {
+  if (e instanceof KnowledgeGraphUnavailableError) {
+    return res.status(503).json({ success: false, message: e.message });
+  }
+  return res.status(500).json({ success: false, message: e?.message || fallbackMessage });
+}
+
+async function getKnowledgeGraphStore(): Promise<{ nodes: any[]; edges: any[]; clusters: any[]; updatedAt?: string }> {
+  const production = isProductionRuntime();
+  const db = getAdminFirestore();
+
+  if (db) {
+    try {
+      const [nodesSnap, edgesSnap, clustersSnap] = await Promise.all([
+        db.collection(KG_NODES_COLLECTION).get(),
+        db.collection(KG_EDGES_COLLECTION).get(),
+        db.collection(KG_CLUSTERS_COLLECTION).get(),
+      ]);
+
+      // In production Firestore is authoritative, even when the graph is still empty.
+      if (production || !nodesSnap.empty || !edgesSnap.empty) {
+        return {
+          nodes: nodesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          edges: edgesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          clusters: clustersSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    } catch (err: any) {
+      if (production) {
+        console.error("Firestore knowledge graph fetch failed:", err.message);
+        throw new KnowledgeGraphUnavailableError("Knowledge graph database is temporarily unavailable.");
+      }
+      console.warn("Firestore knowledge graph fetch notice (using local JSON store fallback):", err.message);
     }
-  } catch (err: any) {
-    console.warn("Firestore knowledge graph fetch notice (using local JSON store fallback):", err.message);
+  } else if (production) {
+    // Never silently serve stale local data in production.
+    throw new KnowledgeGraphUnavailableError(
+      "Firestore is not configured; the knowledge graph is unavailable."
+    );
   }
 
-  // Fallback to local structured dataset
+  // Development-only fallback to local structured dataset
   const localFile = path.join(process.cwd(), "data", "knowledge_graph_store.json");
   if (fs.existsSync(localFile)) {
     try {
@@ -1163,6 +1206,9 @@ app.get("/api/curriculum/knowledge-graph", requireAuth, async (_req, res) => {
     });
   } catch (e: any) {
     console.error("Failed to load knowledge graph from Firestore:", e);
+    if (e instanceof KnowledgeGraphUnavailableError) {
+      return res.status(503).json({ success: false, message: e.message });
+    }
     res.status(500).json({ success: false, message: "Failed to load knowledge graph." });
   }
 });
@@ -1174,13 +1220,13 @@ app.post("/api/curriculum/knowledge-graph/nodes", requireAdmin, async (req, res)
     if (!node || !node.id || !node.title) {
       return res.status(400).json({ success: false, message: "Valid node with id and title is required." });
     }
-    await kgDb.collection(KG_NODES_COLLECTION).doc(String(node.id)).set(
+    await getKgDb().collection(KG_NODES_COLLECTION).doc(String(node.id)).set(
       { ...node, updatedAt: new Date().toISOString(), updatedBy: req.user!.uid },
       { merge: true }
     );
     res.json({ success: true, node });
   } catch (e: any) {
-    res.status(500).json({ success: false, message: e.message });
+    sendKgError(res, e, "Failed to save node.");
   }
 });
 
@@ -1195,6 +1241,7 @@ app.post("/api/curriculum/knowledge-graph/nodes/batch-positions", requireAdmin, 
     if (positions.length > 500) {
       return res.status(400).json({ success: false, message: "Too many positions in a single batch (max 500)." });
     }
+    const kgDb = getKgDb();
     const batch = kgDb.batch();
     const now = new Date().toISOString();
     for (const p of positions) {
@@ -1208,7 +1255,7 @@ app.post("/api/curriculum/knowledge-graph/nodes/batch-positions", requireAdmin, 
     await batch.commit();
     res.json({ success: true, count: positions.length });
   } catch (e: any) {
-    res.status(500).json({ success: false, message: e.message });
+    sendKgError(res, e, "Failed to save node positions.");
   }
 });
 
@@ -1219,13 +1266,13 @@ app.post("/api/curriculum/knowledge-graph/edges", requireAdmin, async (req, res)
     if (!edge || !edge.id || !edge.source || !edge.target) {
       return res.status(400).json({ success: false, message: "Valid edge with id, source, and target is required." });
     }
-    await kgDb.collection(KG_EDGES_COLLECTION).doc(String(edge.id)).set(
+    await getKgDb().collection(KG_EDGES_COLLECTION).doc(String(edge.id)).set(
       { ...edge, updatedAt: new Date().toISOString(), updatedBy: req.user!.uid },
       { merge: true }
     );
     res.json({ success: true, edge });
   } catch (e: any) {
-    res.status(500).json({ success: false, message: e.message });
+    sendKgError(res, e, "Failed to save edge.");
   }
 });
 
@@ -1233,6 +1280,7 @@ app.post("/api/curriculum/knowledge-graph/edges", requireAdmin, async (req, res)
 app.delete("/api/curriculum/knowledge-graph/nodes/:id", requireAdmin, async (req, res) => {
   try {
     const nodeId = req.params.id;
+    const kgDb = getKgDb();
     const [sourceEdges, targetEdges] = await Promise.all([
       kgDb.collection(KG_EDGES_COLLECTION).where("source", "==", nodeId).get(),
       kgDb.collection(KG_EDGES_COLLECTION).where("target", "==", nodeId).get(),
@@ -1245,7 +1293,7 @@ app.delete("/api/curriculum/knowledge-graph/nodes/:id", requireAdmin, async (req
     await batch.commit();
     res.json({ success: true, deletedNodeId: nodeId });
   } catch (e: any) {
-    res.status(500).json({ success: false, message: e.message });
+    sendKgError(res, e, "Failed to delete node.");
   }
 });
 
@@ -1253,10 +1301,10 @@ app.delete("/api/curriculum/knowledge-graph/nodes/:id", requireAdmin, async (req
 app.delete("/api/curriculum/knowledge-graph/edges/:id", requireAdmin, async (req, res) => {
   try {
     const edgeId = req.params.id;
-    await kgDb.collection(KG_EDGES_COLLECTION).doc(edgeId).delete();
+    await getKgDb().collection(KG_EDGES_COLLECTION).doc(edgeId).delete();
     res.json({ success: true, deletedEdgeId: edgeId });
   } catch (e: any) {
-    res.status(500).json({ success: false, message: e.message });
+    sendKgError(res, e, "Failed to delete edge.");
   }
 });
 

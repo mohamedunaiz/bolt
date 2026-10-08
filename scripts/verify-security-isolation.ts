@@ -222,11 +222,19 @@ async function runSecurityTestSuite() {
     ],
     correctOption: "C",
     explanation: "Both statements are correct under Supreme Court judgment in SR Bommai v Union of India.",
+    // The validator requires one analysis entry per option, exactly one marked correct.
+    optionAnalysis: [
+      { optionKey: "A", analysis: "Incorrect: statement 2 is also correct.", isCorrect: false },
+      { optionKey: "B", analysis: "Incorrect: statement 1 is also correct.", isCorrect: false },
+      { optionKey: "C", analysis: "Correct: both statements hold per SR Bommai.", isCorrect: true },
+      { optionKey: "D", analysis: "Incorrect: at least one statement is correct.", isCorrect: false },
+    ],
   };
 
   const validationSuccess = validatePrelimsMcq(validMcq);
-  assert(validationSuccess.isValid, "Prelims MCQ Validation Engine (Valid)", "Valid MCQ was flagged as invalid");
+  assert(validationSuccess.isValid, "Prelims MCQ Validation Engine (Valid)", `Valid MCQ was flagged as invalid: ${validationSuccess.errors.join(" | ")}`);
 
+  // Negative fixtures are otherwise fully valid so each one isolates exactly one rule.
   const invalidMcqDuplicateChoices = {
     questionText: "Which of the following is correct regarding Herbert Simon's Bounded Rationality?",
     options: [
@@ -237,10 +245,20 @@ async function runSecurityTestSuite() {
     ],
     correctOption: "A",
     explanation: "Herbert Simon proposed satisficing behavior.",
+    optionAnalysis: [
+      { optionKey: "A", analysis: "Correct: Simon proposed satisficing.", isCorrect: true },
+      { optionKey: "B", analysis: "Duplicate of option A in this fixture.", isCorrect: false },
+      { optionKey: "C", analysis: "Incorrect: optimizing is the classical model.", isCorrect: false },
+      { optionKey: "D", analysis: "Incorrect: economic man is the rival concept.", isCorrect: false },
+    ],
   };
 
   const validationFailure = validatePrelimsMcq(invalidMcqDuplicateChoices);
-  assert(!validationFailure.isValid, "Prelims MCQ Rejects Duplicate Options", "Duplicate option choice was not rejected");
+  assert(
+    !validationFailure.isValid && validationFailure.errors.some((e) => /duplicate/i.test(e)),
+    "Prelims MCQ Rejects Duplicate Options",
+    `Duplicate option choice was not rejected for the right reason: ${validationFailure.errors.join(" | ")}`
+  );
 
   const invalidMcqWrongOptionsCount = {
     questionText: "What was Chester Barnard's executive function?",
@@ -250,9 +268,19 @@ async function runSecurityTestSuite() {
     ],
     correctOption: "A",
     explanation: "Needs 4 options.",
+    optionAnalysis: [
+      { optionKey: "A", analysis: "Correct in this fixture only.", isCorrect: true },
+      { optionKey: "B", analysis: "Incorrect in this fixture only.", isCorrect: false },
+      { optionKey: "C", analysis: "Missing option in this fixture.", isCorrect: false },
+      { optionKey: "D", analysis: "Missing option in this fixture.", isCorrect: false },
+    ],
   };
   const validationFailureCount = validatePrelimsMcq(invalidMcqWrongOptionsCount);
-  assert(!validationFailureCount.isValid, "Prelims MCQ Rejects Non-4 Options Count", "Non-4 options was not rejected");
+  assert(
+    !validationFailureCount.isValid && validationFailureCount.errors.some((e) => /exactly 4 options/i.test(e)),
+    "Prelims MCQ Rejects Non-4 Options Count",
+    `Non-4 options was not rejected for the right reason: ${validationFailureCount.errors.join(" | ")}`
+  );
 
   // 6. Test User Account Deletion Functionality (GDPR / Right-to-be-Forgotten)
   const deleteTestUser = registerUser({
