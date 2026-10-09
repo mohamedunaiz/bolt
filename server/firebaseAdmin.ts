@@ -22,7 +22,9 @@ export function initFirebaseAdmin(): App | null {
   }
 
   try {
-    // Environment values copied into Vercel can accidentally include trailing newlines.\n    // Normalize project IDs before the Admin SDK builds Firestore resource names.\n    let projectId = (process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "").trim();
+    // Environment values copied into Vercel can accidentally include trailing newlines.
+    // Normalize project IDs before the Admin SDK builds Firestore resource names.
+    let projectId =(process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "").trim();
     if (!projectId) {
       const configPath = path.join(process.cwd(), "firebase-applet-config.json");
       if (fs.existsSync(configPath)) {

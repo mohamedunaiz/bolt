@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 
 import { generateEmbedding, cosineSimilarity, rerankDocuments } from "./aiGateway";
+import { getAdminFirestore } from "./firebaseAdmin";
+import { isServerless } from "./runtimeEnv";
 
 export interface KnowledgeDocument {
   id: string;
@@ -100,7 +102,140 @@ Section 3: Punchhi Commission (2010) Recommendations.
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Persistence
+//   - Development: local JSON file (server/knowledge_store.json).
+//   - Serverless/production (Vercel): in-memory working copy seeded from code, with
+//     user documents persisted to Firestore (ragDocuments / ragChunks). The
+//     filesystem there is read-only/ephemeral, so no file is ever read or written.
+// ---------------------------------------------------------------------------
+
+let memoryStore: RagStore | null = null;
+let lastHydrateAt = 0;
+const pendingWrites = new Set<Promise<void>>();
+
+function seededStore(): RagStore {
+  const store: RagStore = { documents: [], chunks: [] };
+  for (const seed of SEED_DOCUMENTS) {
+    addDocumentToStore(store, {
+      title: seed.title,
+      category: seed.category,
+      tags: seed.tags,
+      content: seed.content,
+      userId: "system",
+    });
+  }
+  return store;
+}
+
+function stripUndefined<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function track(p: Promise<void>): void {
+  pendingWrites.add(p);
+  p.then(
+    () => pendingWrites.delete(p),
+    () => undefined
+  );
+}
+
+function persistDocumentToFirestore(doc: KnowledgeDocument, chunks: KnowledgeChunk[]): void {
+  if (!isServerless() || doc.userId === "system") return;
+  track(
+    (async () => {
+      const db = getAdminFirestore();
+      if (!db) throw new Error("Firestore is not configured");
+      await db.collection("ragDocuments").doc(doc.id).set(stripUndefined(doc));
+      for (let i = 0; i < chunks.length; i += 400) {
+        const batch = db.batch();
+        for (const c of chunks.slice(i, i + 400)) {
+          batch.set(db.collection("ragChunks").doc(c.id), stripUndefined(c));
+        }
+        await batch.commit();
+      }
+    })()
+  );
+}
+
+function persistArchiveToFirestore(docId: string, status: "active" | "archived"): void {
+  if (!isServerless()) return;
+  track(
+    (async () => {
+      const db = getAdminFirestore();
+      if (!db) throw new Error("Firestore is not configured");
+      await db.collection("ragDocuments").doc(docId).set({ status }, { merge: true });
+    })()
+  );
+}
+
+function persistDeleteToFirestore(docId: string): void {
+  if (!isServerless()) return;
+  track(
+    (async () => {
+      const db = getAdminFirestore();
+      if (!db) throw new Error("Firestore is not configured");
+      await db.collection("ragDocuments").doc(docId).delete();
+      const chunkSnap = await db.collection("ragChunks").where("documentId", "==", docId).get();
+      for (let i = 0; i < chunkSnap.docs.length; i += 400) {
+        const batch = db.batch();
+        chunkSnap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+    })()
+  );
+}
+
+/**
+ * Serverless only: refresh the in-memory store from Firestore (throttled to once per
+ * 30s per instance). Call before handling a knowledge request. No-op in development.
+ */
+export async function hydrateKnowledgeStore(force = false): Promise<void> {
+  if (!isServerless()) return;
+  if (!force && Date.now() - lastHydrateAt < 30000) return;
+  const db = getAdminFirestore();
+  if (!db) return;
+  try {
+    const [docSnap, chunkSnap] = await Promise.all([
+      db.collection("ragDocuments").get(),
+      db.collection("ragChunks").get(),
+    ]);
+    const store = (memoryStore ??= seededStore());
+    const remote = new Map<string, KnowledgeDocument>();
+    docSnap.docs.forEach((d) => remote.set(d.id, { ...(d.data() as KnowledgeDocument), id: d.id }));
+    // Remote is authoritative for user documents (system seeds live only in code).
+    store.documents = [
+      ...[...remote.values()].sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : -1)),
+      ...store.documents.filter((d) => d.userId === "system"),
+    ];
+    const chunks = store.chunks.filter((c) => !remote.has(c.documentId));
+    chunkSnap.docs.forEach((d) => {
+      const c = d.data() as KnowledgeChunk;
+      if (remote.has(c.documentId)) chunks.push({ ...c, id: d.id });
+    });
+    store.chunks = chunks;
+    lastHydrateAt = Date.now();
+  } catch (err: any) {
+    console.error("[RAG] Failed to hydrate knowledge store from Firestore:", err?.message || err);
+  }
+}
+
+/**
+ * Await pending Firestore writes. Rejects if any write failed, so callers never
+ * report success for a document that was not persisted.
+ */
+export async function flushKnowledgeStore(): Promise<void> {
+  const batch = [...pendingWrites];
+  const results = await Promise.allSettled(batch);
+  batch.forEach((p) => pendingWrites.delete(p));
+  const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+  if (failed) throw failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
+}
+
 function ensureStore(): RagStore {
+  if (isServerless()) {
+    return (memoryStore ??= seededStore());
+  }
   try {
     if (!fs.existsSync(STORE_PATH)) {
       const initialStore: RagStore = { documents: [], chunks: [] };
@@ -136,6 +271,7 @@ function ensureStore(): RagStore {
 }
 
 function writeStore(store: RagStore) {
+  if (isServerless()) return; // Firestore write-through happens per mutation; never touch the filesystem.
   try {
     fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf-8");
   } catch (err) {
@@ -324,6 +460,7 @@ export function indexNewDocument(params: {
   });
 
   writeStore(store);
+  persistDocumentToFirestore(doc, store.chunks.filter((c) => c.documentId === doc.id));
   return { success: true, document: doc };
 }
 
@@ -334,6 +471,7 @@ export function archiveDocument(docId: string, archive: boolean = true): boolean
 
   doc.status = archive ? "archived" : "active";
   writeStore(store);
+  if (doc.userId !== "system") persistArchiveToFirestore(docId, doc.status);
   return true;
 }
 
@@ -342,9 +480,10 @@ export function deleteDocument(docId: string): boolean {
   const docIndex = store.documents.findIndex((d) => d.id === docId);
   if (docIndex === -1) return false;
 
-  store.documents.splice(docIndex, 1);
+  const [removed] = store.documents.splice(docIndex, 1);
   store.chunks = store.chunks.filter((c) => c.documentId !== docId);
   writeStore(store);
+  if (removed.userId !== "system") persistDeleteToFirestore(docId);
   return true;
 }
 

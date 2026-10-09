@@ -2,6 +2,7 @@ import { execFileSync } from "child_process";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { assertPythonAvailable } from "./runtimeEnv";
 
 const ROOT_DIR = process.cwd();
 const PYTHON_DIR = path.join(ROOT_DIR, "python");
@@ -15,6 +16,7 @@ export function executePyqs(options: {
   currentAffairs?: boolean;
   search?: string;
 }): { stats: any; count: number; questions: any[] } {
+  assertPythonAvailable();
   const args = [path.join(PYTHON_DIR, "bolt_pyqs.py")];
 
   if (options.era && options.era !== "all") {
@@ -76,6 +78,7 @@ export function executeNcertChapters(
   subject?: string,
   classNum?: number
 ): { count: number; chapters: any[] } {
+  assertPythonAvailable();
   const args = [path.join(PYTHON_DIR, "bolt_ncert.py")];
 
   if (subject && subject.toLowerCase() !== "all") {
@@ -108,6 +111,7 @@ export function executeNcertChapters(
 export function executeNcertQuiz(
   chapterId: string
 ): { chapterId: string; questions: any[] } {
+  assertPythonAvailable();
   const args = [path.join(PYTHON_DIR, "bolt_ncert.py"), "--chapter-id", chapterId];
 
   try {
@@ -136,6 +140,7 @@ export function executeMaterialProcess(options: {
   questionsCount?: number;
   tempFilePath?: string;
 }): any {
+  assertPythonAvailable();
   const questionsCount = options.questionsCount || 5;
   let targetFile = options.tempFilePath;
   let createdTemp = false;

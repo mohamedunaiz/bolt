@@ -27,6 +27,7 @@
     "lint": "tsc --noEmit",
     "test:security": "tsx scripts/verify-security-isolation.ts",
     "test:news": "tsx scripts/test-news-pipeline.ts",
+    "test:serverless": "tsx scripts/test-serverless-runtime.ts",
     "test:acceptance": "tsx scripts/run-acceptance-tests.ts",
     "benchmark": "tsx scripts/run-bolt-benchmark.ts",
     "test:vercel-runtime": "node --no-experimental-require-module --import tsx scripts/test-vercel-runtime.ts"
