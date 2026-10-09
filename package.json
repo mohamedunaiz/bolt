@@ -26,6 +26,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:security": "tsx scripts/verify-security-isolation.ts",
+    "test:news": "tsx scripts/test-news-pipeline.ts",
     "test:acceptance": "tsx scripts/run-acceptance-tests.ts",
     "benchmark": "tsx scripts/run-bolt-benchmark.ts"
   },

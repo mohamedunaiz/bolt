@@ -16,7 +16,11 @@ import {
   parseFeedContent,
   RssFetchError,
 } from "../server/rssService";
-import { runNewsIngestion, type IngestionDeps } from "../server/currentAffairsPipeline";
+import {
+  runNewsIngestion,
+  persistArticlesThenGenerateMcqs,
+  type IngestionDeps,
+} from "../server/currentAffairsPipeline";
 import type { NewsArticle } from "../src/types";
 
 let passed = 0;
@@ -185,6 +189,54 @@ async function run() {
     check("brand new headline present", headlines.includes("Brand new headline"));
     check("older unique headline retained", headlines.includes("Older unique headline"));
     check("cache written", res.cacheWritten === true);
+  }
+
+  console.log("\n9. Articles are persisted BEFORE MCQ generation; MCQ problems never lose the news");
+  {
+    const articles = [makeArticle("p1", "Persisted headline")];
+
+    // 9a. ordering: save happens first, generation second
+    const order: string[] = [];
+    const ok = await persistArticlesThenGenerateMcqs(articles, {
+      saveArticles: async () => { order.push("save"); },
+      generateMcqs: async () => { order.push("mcqs"); return [{ id: "m1" } as any, { id: "m2" } as any]; },
+    });
+    check("articles saved before MCQs are generated", order.join(",") === "save,mcqs", order.join(","));
+    check("reports number of MCQs generated", ok.mcqsGenerated === 2);
+
+    // 9b. AI outage: generator throws -> articles already saved, no throw, no MCQs
+    let savedA = 0;
+    const outage = await persistArticlesThenGenerateMcqs(articles, {
+      saveArticles: async () => { savedA++; },
+      generateMcqs: async () => { throw new Error("503 all candidates exhausted"); },
+    });
+    check("AI outage does not lose saved articles", savedA === 1);
+    check("AI outage reported, 0 MCQs, no throw", outage.mcqsGenerated === 0 && /503/.test(outage.mcqError || ""));
+
+    // 9c. slow AI: generator exceeds the budget -> gives up, articles still saved
+    let savedB = 0;
+    const started = Date.now();
+    const slow = await persistArticlesThenGenerateMcqs(articles, {
+      saveArticles: async () => { savedB++; },
+      generateMcqs: () => new Promise((resolve) => setTimeout(() => resolve([]), 2000)),
+      mcqBudgetMs: 50,
+    });
+    check("slow AI is cut off by the time budget", Date.now() - started < 1000 && /budget/i.test(slow.mcqError || ""));
+    check("slow AI does not lose saved articles", savedB === 1);
+
+    // 9d. failing to save the articles themselves must NOT be reported as success
+    let generatorCalled = false;
+    let threw = false;
+    try {
+      await persistArticlesThenGenerateMcqs(articles, {
+        saveArticles: async () => { throw new Error("Firestore is not configured"); },
+        generateMcqs: async () => { generatorCalled = true; return []; },
+      });
+    } catch {
+      threw = true;
+    }
+    check("save failure propagates (never reported as success)", threw);
+    check("no MCQ generation after a failed save", generatorCalled === false);
   }
 
   console.log("\n===========================================");

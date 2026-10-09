@@ -22,9 +22,20 @@ export default async function handler(req: Request, res: Response) {
     return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
-  const expectedSecret = process.env.NEWS_CRON_SECRET;
+  // Vercel Cron sends `Authorization: Bearer $CRON_SECRET`; external schedulers can use
+  // NEWS_CRON_SECRET. Either configured secret is accepted.
+  const expectedSecrets = [process.env.NEWS_CRON_SECRET, process.env.CRON_SECRET].filter(
+    (s): s is string => Boolean(s),
+  );
+  if (expectedSecrets.length === 0) {
+    return res.status(503).json({
+      success: false,
+      state: "not_configured",
+      error: "Neither CRON_SECRET nor NEWS_CRON_SECRET is configured; news sync cannot be authenticated.",
+    });
+  }
   const providedSecret = getProvidedSecret(req);
-  if (!expectedSecret || !providedSecret || !secretsMatch(expectedSecret, providedSecret)) {
+  if (!providedSecret || !expectedSecrets.some((s) => secretsMatch(s, providedSecret))) {
     return res.status(401).json({ success: false, state: "auth_failure", error: "Unauthorized scheduler request." });
   }
 
@@ -42,6 +53,7 @@ export default async function handler(req: Request, res: Response) {
       sources: pipelineResult.sources,
       cacheRetained: pipelineResult.cacheRetained,
       cacheWritten: pipelineResult.cacheWritten,
+      mcqsGenerated: pipelineResult.mcqsGenerated ?? 0,
       updatedAt: pipelineResult.updatedAt,
       timestamp: pipelineResult.updatedAt,
     });
