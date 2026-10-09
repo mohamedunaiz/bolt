@@ -1,18 +1,24 @@
-import { app } from "../server.ts";
+import { createRequire } from "node:module";
+import type { Express } from "express";
+
+// The build compiles server.ts to a private CommonJS bundle outside the public
+// Vite output directory. includeFiles in vercel.json ensures the bundle is
+// present in this function artifact; the original TypeScript source is not
+// imported at runtime.
+const require = createRequire(import.meta.url);
+const { app } = require("../server-build/server.cjs") as { app: Express };
 
 /**
  * Vercel Serverless Function Catch-All Handler.
- * Ensures all /api/* routes (including /api/news/*, /api/pyqs/*, etc.)
- * route seamlessly to Express in both Vercel production and local environments.
+ * Forward API requests to the shared Express app so authentication, Firebase,
+ * RAG, current-affairs, and the existing route middleware remain authoritative.
  */
 export default function handler(req: any, res: any) {
-  // If Vercel catch-all populated req.query.path
   if (req.query && req.query.path) {
     const rawPath = Array.isArray(req.query.path)
       ? req.query.path.join("/")
       : String(req.query.path);
 
-    // If req.url is missing, root, or contains the literal catch-all token
     if (!req.url || req.url === "/" || req.url.includes("[...path]") || !req.url.includes(rawPath)) {
       try {
         const parsed = new URL(req.url || "/", "http://localhost");
@@ -25,11 +31,9 @@ export default function handler(req: any, res: any) {
     }
   }
 
-  // Ensure leading /api prefix exists
   if (typeof req.url === "string" && !req.url.startsWith("/api")) {
     req.url = `/api${req.url.startsWith("/") ? "" : "/"}${req.url}`;
   }
 
   return app(req, res);
 }
-

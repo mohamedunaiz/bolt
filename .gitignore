@@ -135,3 +135,5 @@ models/current_affairs_store.json
 models/*.db
 
 python/*.db
+# Private server bundle used only by Vercel Functions
+server-build/

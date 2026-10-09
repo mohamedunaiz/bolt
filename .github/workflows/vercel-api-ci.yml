@@ -1,0 +1,40 @@
+name: Verify Vercel API Fix
+
+on:
+  push:
+    branches:
+      - fix/vercel-production-api
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Install, build, and API regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Build frontend and private server bundle
+        run: npm run build
+      - name: Type check
+        run: npm run lint
+      - name: Verify CommonJS/ESM and Vercel API runtime
+        run: npm run test:vercel-runtime
+      - name: Current affairs pipeline tests
+        run: npm run test:news
+      - name: Security and isolation tests
+        run: npm run test:security
+      - name: Acceptance tests
+        run: npm run test:acceptance

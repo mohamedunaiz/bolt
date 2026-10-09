@@ -64,7 +64,11 @@ export const auth = firebaseConfigured
   : ({ currentUser: null } as ReturnType<typeof getAuth>);
 export const googleProvider = new GoogleAuthProvider();
 
-export const db = getFirestore(app, ...(firebaseConfig.firestoreDatabaseId ? [firebaseConfig.firestoreDatabaseId] : []));
+// Keep both overloads explicit so TypeScript can verify the default and
+// named-database paths against the Firebase SDK's overloaded signatures.
+export const db = firebaseConfig.firestoreDatabaseId
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(app);
 
 export {
   signInWithEmailAndPassword,
