@@ -10,6 +10,7 @@ import { publicAdminSyllabus } from "../data/upscData";
 import { DEFAULT_TIMETABLE_SLOTS } from "../data/timetableData";
 import {
   auth,
+  firebaseConfigured,
   googleProvider,
   signInWithPopup,
   signInWithCustomToken,
@@ -506,5 +507,9 @@ export async function logoutAccount(): Promise<void> {
 export function subscribeToAuthState(
   onUserChanged: (user: FirebaseUser | null) => void
 ): () => void {
+  if (!firebaseConfigured) {
+    onUserChanged(null);
+    return () => {};
+  }
   return onAuthStateChanged(auth, onUserChanged);
 }
