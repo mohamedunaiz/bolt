@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { loadCurrentAffairsFromFirestore } from "../../server/currentAffairsPipeline";
+import { loadCurrentAffairsFromFirestore } from "../../server/currentAffairsPipeline.js";
 
 /**
  * Hosting-agnostic read-only current-affairs endpoint.
