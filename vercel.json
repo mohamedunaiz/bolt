@@ -3,6 +3,12 @@
   "installCommand": "npm ci",
   "outputDirectory": "dist",
   "framework": null,
+  "rewrites": [
+    {
+      "source": "/((?!api(?:/|$)|assets(?:/|$)).*)",
+      "destination": "/index.html"
+    }
+  ],
   "crons": [
     {
       "path": "/api/news/sync",
