@@ -30,13 +30,15 @@ import {
 import firebaseDefaults from "../../firebase-applet-config.json";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseDefaults.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseDefaults.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseDefaults.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseDefaults.storageBucket,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseDefaults.apiKey || "demo-api-key",
+  authDomain:
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseDefaults.authDomain || "demo.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseDefaults.projectId || "demo-project",
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseDefaults.storageBucket || "demo-project.appspot.com",
   messagingSenderId:
-    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseDefaults.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseDefaults.appId,
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseDefaults.messagingSenderId || "000000000000",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseDefaults.appId || "1:000000000000:web:demo",
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseDefaults.measurementId,
   firestoreDatabaseId: import.meta.env.VITE_FIRESTORE_DATABASE_ID || "",
 };
@@ -46,22 +48,23 @@ const missingFirebaseConfig = Object.entries(firebaseConfig)
   .map(([key]) => key);
 
 if (missingFirebaseConfig.length > 0) {
-  throw new Error(
-    `Missing Firebase web configuration: ${missingFirebaseConfig.join(", ")}. Set the corresponding VITE_FIREBASE_* variables.`
+  console.warn(
+    `[Firebase] Web configuration is incomplete (${missingFirebaseConfig.join(", ")}). Firebase-backed features will remain unavailable until VITE_FIREBASE_* variables are configured.`
   );
 }
 
-// Initialize Firebase App singleton
+export const firebaseConfigured = missingFirebaseConfig.length === 0;
+
+// Keep the app shell usable in environments without Firebase variables. Auth and
+// Firestore calls are guarded by their existing service-level error handling.
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Auth
-export const auth = getAuth(app);
+export const auth = firebaseConfigured
+  ? getAuth(app)
+  : ({ currentUser: null } as ReturnType<typeof getAuth>);
 export const googleProvider = new GoogleAuthProvider();
 
-// Initialize Firestore with specific databaseId if configured
-export const db = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+export const db = getFirestore(app, ...(firebaseConfig.firestoreDatabaseId ? [firebaseConfig.firestoreDatabaseId] : []));
 
 export {
   signInWithEmailAndPassword,
