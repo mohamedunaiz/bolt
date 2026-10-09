@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { NewsArticle, PrelimsQuestion } from "../src/types";
-import { fetchAndParseRssFeed, POPULAR_UPSC_FEEDS } from "./rssService";
-import { getGeminiClient, executeGeminiWithFailover, parseFirstJsonObject } from "./aiGateway";
-import { initFirebaseAdmin, getAdminFirestore } from "./firebaseAdmin";
+import { fetchAndParseRssFeed, POPULAR_UPSC_FEEDS } from "./rssService.js";
+import { getGeminiClient, executeGeminiWithFailover, parseFirstJsonObject } from "./aiGateway.js";
+import { initFirebaseAdmin, getAdminFirestore } from "./firebaseAdmin.js";
 
 /**
  * BOLT UPSC Current Affairs Processing Pipeline
@@ -117,7 +117,7 @@ export async function loadCurrentAffairsFromFirestore(): Promise<{
 
   // 2. Try Firebase Client SDK (authorized via firestore.rules public read: if true)
   try {
-    const { db } = await import("../src/lib/firebase");
+    const { db } = await import("../src/lib/firebase.js");
     const { doc, getDoc } = await import("firebase/firestore");
     const docRef = doc(db, CURRENT_AFFAIRS_COLLECTION, CURRENT_AFFAIRS_DOCUMENT);
     const snap = await getDoc(docRef);
