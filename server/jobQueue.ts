@@ -12,6 +12,7 @@
 import fs from "fs";
 import path from "path";
 import { initFirebaseAdmin, getAdminFirestore } from "./firebaseAdmin";
+import { isServerless } from "./runtimeEnv";
 
 export type JobType =
   | "document_indexing"
@@ -55,6 +56,8 @@ function ensureJobsDir() {
 }
 
 function loadDiskJobs(): BackgroundJob[] {
+  // Serverless filesystems are read-only/ephemeral: Firestore is the only durable store there.
+  if (isServerless()) return [];
   try {
     ensureJobsDir();
     if (fs.existsSync(JOBS_STORE_PATH)) {
@@ -68,6 +71,7 @@ function loadDiskJobs(): BackgroundJob[] {
 }
 
 function saveDiskJobs(jobs: BackgroundJob[]) {
+  if (isServerless()) return;
   try {
     ensureJobsDir();
     fs.writeFileSync(JOBS_STORE_PATH, JSON.stringify(jobs.slice(0, 100), null, 2), "utf-8");
@@ -83,6 +87,8 @@ class BoltJobQueueManager {
   private locks: Map<string, number> = new Map();
   private watchdogInterval: NodeJS.Timeout | null = null;
   private firestoreDb: any = null;
+  private pendingSyncs: Set<Promise<void>> = new Set();
+  private lastHydrateAt = 0;
 
   constructor() {
     this.jobs = loadDiskJobs();
@@ -103,7 +109,11 @@ class BoltJobQueueManager {
     );
 
     if (!hasServiceAccount && !hasApplicationCredentials && !hasSplitCredentials) {
-      console.info("[JobQueue] Firestore sync disabled: no Admin credentials configured; using local durable store.");
+      console.info(
+        isServerless()
+          ? "[JobQueue] No Firebase Admin credentials on a serverless host: jobs are in-memory only and will not survive this instance."
+          : "[JobQueue] Firestore sync disabled: no Admin credentials configured; using local durable store."
+      );
       return;
     }
 
@@ -118,14 +128,72 @@ class BoltJobQueueManager {
   /**
    * Syncs single job to Firestore asynchronously in the background.
    */
-  private async syncJobToFirestore(job: BackgroundJob): Promise<void> {
-    if (!this.firestoreDb) return;
-    try {
-      const cleanJob = JSON.parse(JSON.stringify(job));
-      await this.firestoreDb.collection("backgroundJobs").doc(job.id).set(cleanJob, { merge: true });
-    } catch (err: any) {
-      // Non-blocking firestore notice
+  private syncJobToFirestore(job: BackgroundJob): Promise<void> {
+    if (!this.firestoreDb) return Promise.resolve();
+    const p = (async () => {
+      try {
+        const cleanJob = JSON.parse(JSON.stringify(job));
+        await this.firestoreDb.collection("backgroundJobs").doc(job.id).set(cleanJob, { merge: true });
+      } catch (err: any) {
+        console.warn(`[JobQueue] Firestore sync failed for ${job.id}:`, err?.message || err);
+      }
+    })();
+    this.pendingSyncs.add(p);
+    p.finally(() => this.pendingSyncs.delete(p));
+    return p;
+  }
+
+  /** True when jobs are persisted to Firestore (the only durable store on serverless hosts). */
+  get durable(): boolean {
+    return Boolean(this.firestoreDb);
+  }
+
+  /**
+   * Await all in-flight Firestore writes. Serverless functions may be frozen as soon as the
+   * response is sent, so request handlers that enqueue or change jobs await this first.
+   */
+  async flush(): Promise<void> {
+    while (this.pendingSyncs.size > 0) {
+      await Promise.allSettled([...this.pendingSyncs]);
     }
+  }
+
+  /** Load recent jobs from Firestore into memory (no-op without Firestore). Existing in-memory jobs win. */
+  async hydrate(limit = 100): Promise<void> {
+    if (!this.firestoreDb) return;
+    if (Date.now() - this.lastHydrateAt < 5000) return;
+    this.lastHydrateAt = Date.now();
+    try {
+      const snap = await this.firestoreDb.collection("backgroundJobs").orderBy("createdAt", "desc").limit(limit).get();
+      const known = new Set(this.jobs.map((j) => j.id));
+      for (const d of snap.docs) {
+        if (!known.has(d.id)) this.jobs.push({ ...(d.data() as BackgroundJob), id: d.id });
+      }
+      this.jobs.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    } catch (err: any) {
+      console.warn("[JobQueue] Firestore hydrate failed:", err?.message || err);
+    }
+  }
+
+  /** getJob that falls back to Firestore when another instance created the job. */
+  async getJobDurable(id: string, requestingUserId?: string, isAdmin: boolean = false): Promise<BackgroundJob | null> {
+    const local = this.getJob(id, requestingUserId, isAdmin);
+    if (local || !this.firestoreDb) return local;
+    try {
+      const doc = await this.firestoreDb.collection("backgroundJobs").doc(id).get();
+      if (!doc.exists) return null;
+      const job = { ...(doc.data() as BackgroundJob), id: doc.id };
+      if (requestingUserId && !isAdmin && job.ownerId && job.ownerId !== requestingUserId) return null;
+      return job;
+    } catch (err: any) {
+      console.warn("[JobQueue] Firestore getJob failed:", err?.message || err);
+      return null;
+    }
+  }
+
+  async listJobsDurable(filter?: Parameters<BoltJobQueueManager["listJobs"]>[0]): Promise<BackgroundJob[]> {
+    await this.hydrate();
+    return this.listJobs(filter);
   }
 
   /**

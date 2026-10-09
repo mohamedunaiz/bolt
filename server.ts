@@ -34,9 +34,12 @@ import {
   deleteDocument,
   searchKnowledgeChunks,
   searchKnowledgeChunksAdvanced,
+  hydrateKnowledgeStore,
+  flushKnowledgeStore,
   KnowledgeChunk,
 } from "./server/ragService";
 import { computeTopicDiagnostic } from "./server/knowledgeScoring";
+import { isPythonAvailable, assertPythonAvailable, PythonUnavailableError } from "./server/runtimeEnv";
 import { BoltAIGateway, getGatewayConfig, updateGatewayConfig, executeGeminiWithFailover, getGeminiClient } from "./server/aiGateway";
 import { StudentIntelligenceEngine, CANONICAL_TOPIC_GRAPH } from "./server/studentIntelligence";
 import { BoltAgentRuntime } from "./server/boltAgentRuntime";
@@ -119,12 +122,7 @@ app.use("/api/progress", requireAuth);
 
 async function buildHealthSnapshot() {
   const geminiAvailable = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY";
-  let pythonStatus = "active";
-  try {
-    execSync("python3 --version");
-  } catch {
-    pythonStatus = "unavailable";
-  }
+  const pythonStatus = isPythonAvailable() ? "active" : "unavailable";
 
   const pipelineStatus = await getPipelineStatusFromFirestore();
   const firestoreHealth = await checkFirestoreHealth(true);
@@ -499,7 +497,28 @@ app.get("/api/user/progress", requireAuth, async (req, res) => {
 });
 
 // Python Engine Status & Analytics
+// Vercel's Node runtime has no python3. Python-backed routes are explicitly unavailable there
+// (503 + PYTHON_UNAVAILABLE) instead of failing with "python3: command not found".
+const requirePython: express.RequestHandler = (_req, res, next) => {
+  if (isPythonAvailable()) return next();
+  res.status(503).json({
+    success: false,
+    state: "unavailable",
+    code: new PythonUnavailableError().code,
+    error: new PythonUnavailableError().message,
+  });
+};
+
 app.get("/api/python/status", requireAuth, (_req, res) => {
+  if (!isPythonAvailable()) {
+    return res.json({
+      status: "unavailable",
+      code: "PYTHON_UNAVAILABLE",
+      message: new PythonUnavailableError().message,
+      scripts: [],
+      features: [],
+    });
+  }
   try {
     const version = execSync("python3 --version").toString().trim();
     res.json({
@@ -524,6 +543,7 @@ app.get("/api/python/status", requireAuth, (_req, res) => {
 
 app.post("/api/python/analytics", requireAuth, (req, res) => {
   try {
+    assertPythonAvailable();
     const inputPayload = JSON.stringify(req.body.topics || []);
     const pyScript = "import sys, json; sys.path.append('./python'); import bolt_engine; topics = json.load(sys.stdin); print(json.dumps(bolt_engine.analyze_student_progress(topics)))";
     const result = execSync(`python3 -c "${pyScript}"`, {
@@ -547,7 +567,7 @@ app.post("/api/python/analytics", requireAuth, (req, res) => {
 });
 
 // Process Study Materials (PDF, DOCX, TXT) and Generate Questions via Python Engine (Secured)
-app.post("/api/python/materials/process", requireAuth, heavyTaskLimiter, (req, res) => {
+app.post("/api/python/materials/process", requireAuth, requirePython, heavyTaskLimiter, (req, res) => {
   try {
     const { text, title, questionsCount, fileBase64, filename } = req.body;
     let materialText = typeof text === "string" ? text.slice(0, 100000) : "";
@@ -598,7 +618,7 @@ app.post("/api/python/materials/process", requireAuth, heavyTaskLimiter, (req, r
 });
 
 // 1855 - 2026 PYQ Database with Peripheral Areas & Current Affairs Engine (Secured)
-app.get("/api/python/pyqs", requireAuth, generalApiLimiter, (req, res) => {
+app.get("/api/python/pyqs", requireAuth, requirePython, generalApiLimiter, (req, res) => {
   try {
     const era = (req.query.era as string) || "all";
     const peripheral = req.query.peripheral === "true";
@@ -630,7 +650,7 @@ app.get("/api/python/pyqs", requireAuth, generalApiLimiter, (req, res) => {
 });
 
 // NCERT Foundation Chapters & Curricula (Class 6 - 12) (Secured)
-app.get("/api/python/ncert/chapters", requireAuth, generalApiLimiter, (req, res) => {
+app.get("/api/python/ncert/chapters", requireAuth, requirePython, generalApiLimiter, (req, res) => {
   try {
     const subject = (req.query.subject as string) || "all";
     const classNum = req.query.classNum ? parseInt(req.query.classNum as string, 10) : undefined;
@@ -650,7 +670,7 @@ app.get("/api/python/ncert/chapters", requireAuth, generalApiLimiter, (req, res)
 });
 
 // NCERT Chapter Quiz Assessment (Secured)
-app.get("/api/python/ncert/quiz", requireAuth, generalApiLimiter, (req, res) => {
+app.get("/api/python/ncert/quiz", requireAuth, requirePython, generalApiLimiter, (req, res) => {
   try {
     const chapterId = (req.query.chapterId as string) || "";
     if (!chapterId) {
@@ -688,7 +708,7 @@ const ALLOWED_CLI_COMMANDS: Record<string, string[]> = {
 };
 
 // Python Engine CLI Terminal Runner - Secured for Admin & Disabled in Production by default
-app.post("/api/python/cli/execute", requireAdmin, adminRateLimiter, (req, res) => {
+app.post("/api/python/cli/execute", requireAdmin, requirePython, adminRateLimiter, (req, res) => {
   try {
     // Defense-in-depth: Disable CLI command execution in production environments
     if (process.env.NODE_ENV === "production" && process.env.ENABLE_DEV_CLI !== "true") {
@@ -1019,6 +1039,12 @@ app.post("/api/ai/registry/rollback", requireAdmin, adminRateLimiter, (req, res)
 // KNOWLEDGE REPOSITORY & RAG API
 // ----------------------------------------------------
 
+// Serverless instances do not share memory or disk: refresh the knowledge store from Firestore first.
+app.use(["/api/knowledge", "/api/rag"], async (_req, _res, next) => {
+  await hydrateKnowledgeStore();
+  next();
+});
+
 app.get("/api/knowledge/documents", requireAuth, (req, res) => {
   const userId = (req.user!.isAdmin && req.query.userId) ? (req.query.userId as string) : req.user!.uid;
   const docs = listDocuments(userId);
@@ -1036,7 +1062,7 @@ app.get("/api/knowledge/documents/:id", requireAuth, (req, res) => {
   res.json({ success: true, ...doc });
 });
 
-app.post("/api/knowledge/upload", requireAuth, heavyTaskLimiter, (req, res) => {
+app.post("/api/knowledge/upload", requireAuth, heavyTaskLimiter, async (req, res) => {
   try {
     const { title, category, tags, content, sourceUrl } = req.body;
     // Derive authenticated userId from token to ensure isolation
@@ -1045,22 +1071,28 @@ app.post("/api/knowledge/upload", requireAuth, heavyTaskLimiter, (req, res) => {
     if (!result.success) {
       return res.status(400).json(result);
     }
+    await flushKnowledgeStore(); // throws if the document could not be persisted
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message || "Failed to index document" });
   }
 });
 
-app.delete("/api/knowledge/documents/:id", requireAuth, (req, res) => {
+app.delete("/api/knowledge/documents/:id", requireAuth, async (req, res) => {
   const doc = getDocumentById(req.params.id);
   if (doc && doc.document.userId && doc.document.userId !== req.user!.uid && !req.user!.isAdmin) {
     return res.status(403).json({ success: false, error: "Access denied to delete this document" });
   }
-  const success = deleteDocument(req.params.id);
-  res.json({ success });
+  try {
+    const success = deleteDocument(req.params.id);
+    await flushKnowledgeStore();
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || "Failed to delete document." });
+  }
 });
 
-app.post("/api/knowledge/archive", requireAuth, (req, res) => {
+app.post("/api/knowledge/archive", requireAuth, async (req, res) => {
   try {
     const { id, archive } = req.body;
     if (!id) {
@@ -1071,6 +1103,7 @@ app.post("/api/knowledge/archive", requireAuth, (req, res) => {
       return res.status(403).json({ success: false, error: "Access denied to archive this document" });
     }
     const success = archiveDocument(id, archive !== false);
+    await flushKnowledgeStore();
     res.json({ success });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message || "Failed to archive document." });
@@ -1488,7 +1521,7 @@ app.post("/api/news/sync-all", requireAdmin, async (req, res) => {
 });
 
 // 1.1 Python LoRA Model Training Execution API
-app.post("/api/bolt/train", requireAdmin, heavyTaskLimiter, async (req, res) => {
+app.post("/api/bolt/train", requireAdmin, requirePython, heavyTaskLimiter, async (req, res) => {
   try {
     const {
       datasetId,
@@ -2315,6 +2348,7 @@ jobQueue.registerWorker("document_indexing", async (job) => {
     category: category || "General Studies",
     content: text || "",
   });
+  await flushKnowledgeStore();
   return { docId: res.document?.id, chunksCount: res.document?.chunkCount || 0 };
 });
 
@@ -2443,13 +2477,13 @@ function jobOwnerId(job: any): string | undefined {
   return job?.params?.ownerId;
 }
 
-app.get("/api/jobs", requireAuth, (req, res) => {
+app.get("/api/jobs", requireAuth, async (req, res) => {
   try {
     const type = req.query.type as any;
     const status = req.query.status as any;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 25;
     const isAdmin = !!req.user!.isAdmin;
-    const jobs = jobQueue.listJobs({ type, status, limit: isAdmin ? limit : Math.max(limit, 100) });
+    const jobs = await jobQueue.listJobsDurable({ type, status, limit: isAdmin ? limit : Math.max(limit, 100) });
     // Cross-user isolation: non-admins only ever see jobs they own.
     const scoped = isAdmin ? jobs : jobs.filter((j: any) => jobOwnerId(j) === req.user!.uid).slice(0, limit);
     res.json({ success: true, jobs: scoped });
@@ -2458,7 +2492,7 @@ app.get("/api/jobs", requireAuth, (req, res) => {
   }
 });
 
-app.post("/api/jobs", requireAuth, (req, res) => {
+app.post("/api/jobs", requireAuth, async (req, res) => {
   try {
     const { type, title, params } = req.body;
     if (!type || !title) {
@@ -2471,15 +2505,16 @@ app.post("/api/jobs", requireAuth, (req, res) => {
     // system-wide jobs), so ownership can always be enforced on read/retry.
     const ownerId = req.user!.isAdmin && params?.ownerId === "system" ? "system" : req.user!.uid;
     const job = jobQueue.enqueue(type, title, { ...(params || {}), ownerId });
+    await jobQueue.flush(); // serverless: the record must reach Firestore before the function is frozen
     res.json({ success: true, job });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.get("/api/jobs/:id", requireAuth, (req, res) => {
+app.get("/api/jobs/:id", requireAuth, async (req, res) => {
   try {
-    const job = jobQueue.getJob(req.params.id);
+    const job = await jobQueue.getJobDurable(req.params.id);
     if (!job) {
       return res.status(404).json({ success: false, error: "Job not found." });
     }
@@ -2495,6 +2530,7 @@ app.get("/api/jobs/:id", requireAuth, (req, res) => {
 
 app.post("/api/jobs/:id/retry", requireAuth, async (req, res) => {
   try {
+    await jobQueue.hydrate();
     const existing = jobQueue.getJob(req.params.id);
     if (!existing) {
       return res.status(404).json({ success: false, error: "Job cannot be retried." });
@@ -2507,6 +2543,7 @@ app.post("/api/jobs/:id/retry", requireAuth, async (req, res) => {
     if (!job) {
       return res.status(404).json({ success: false, error: "Job cannot be retried." });
     }
+    await jobQueue.flush();
     res.json({ success: true, job });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
