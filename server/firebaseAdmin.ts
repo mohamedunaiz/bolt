@@ -22,13 +22,13 @@ export function initFirebaseAdmin(): App | null {
   }
 
   try {
-    let projectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+    // Environment values copied into Vercel can accidentally include trailing newlines.\n    // Normalize project IDs before the Admin SDK builds Firestore resource names.\n    let projectId = (process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "").trim();
     if (!projectId) {
       const configPath = path.join(process.cwd(), "firebase-applet-config.json");
       if (fs.existsSync(configPath)) {
         try {
           const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-          projectId = cfg.projectId;
+          projectId = typeof cfg.projectId === "string" ? cfg.projectId.trim() : cfg.projectId;
         } catch {}
       }
     }
@@ -39,7 +39,7 @@ export function initFirebaseAdmin(): App | null {
         const sa = JSON.parse(serviceAccountJson);
         const app = initializeApp({
           credential: cert(sa),
-          projectId: projectId || sa.project_id,
+          projectId: projectId || (typeof sa.project_id === "string" ? sa.project_id.trim() : sa.project_id),
         });
         isInitialized = true;
         console.log("Firebase Admin initialized with service account.");
