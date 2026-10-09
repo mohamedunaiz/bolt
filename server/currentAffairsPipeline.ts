@@ -266,6 +266,8 @@ export interface IngestionResult {
    * source fails we deliberately DO NOT write, so the previous cache survives.
    */
   cacheWritten: boolean;
+  /** Validated MCQs produced by this run (best effort; 0 when AI was unavailable or timed out). */
+  mcqsGenerated?: number;
 }
 
 export interface IngestionDeps {
@@ -349,21 +351,66 @@ export async function runNewsIngestion(deps: IngestionDeps): Promise<IngestionRe
   };
 }
 
+export interface PersistDeps {
+  saveArticles: (articles: NewsArticle[]) => Promise<void>;
+  generateMcqs: (articles: NewsArticle[]) => Promise<PrelimsQuestion[]>;
+  /** Max time to wait for MCQ generation before giving up (default 20s). */
+  mcqBudgetMs?: number;
+}
+
+/**
+ * Persists ingested articles FIRST, then generates MCQs as a best-effort extra.
+ *
+ * Previously MCQs (several sequential AI calls, each with failover and a timeout) were
+ * generated before anything was saved. On a serverless host with a function time limit,
+ * a slow or failing AI provider therefore meant the freshly ingested news was never
+ * written at all. Now a failed/slow MCQ step can only cost the MCQs, never the news.
+ * A failure to save the articles themselves still throws, so a run is never reported
+ * successful when nothing was persisted.
+ */
+export async function persistArticlesThenGenerateMcqs(
+  articles: NewsArticle[],
+  deps: PersistDeps,
+): Promise<{ mcqsGenerated: number; mcqError?: string }> {
+  await deps.saveArticles(articles);
+
+  const budgetMs = deps.mcqBudgetMs ?? 20_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const mcqs = await Promise.race([
+      deps.generateMcqs(articles),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`MCQ generation exceeded its ${budgetMs}ms budget`)), budgetMs);
+      }),
+    ]);
+    return { mcqsGenerated: mcqs.length };
+  } catch (e: any) {
+    const mcqError = e?.message || String(e);
+    console.warn("[CURRENT-AFFAIRS] MCQ generation skipped; articles were already saved:", mcqError);
+    return { mcqsGenerated: 0, mcqError };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Runs the full end-to-end RSS ingestion pipeline across active news sources,
  * wiring the injectable core to the real RSS fetcher, server-side MCQ generator,
  * and Firestore/disk cache.
  */
 export async function executeNewsIngestionPipeline(): Promise<IngestionResult> {
+  let mcqsGenerated = 0;
   const result = await runNewsIngestion({
     feeds: POPULAR_UPSC_FEEDS,
     fetchFeed: (url, source) => fetchAndParseRssFeed(url, source),
     loadCache: () => loadCurrentAffairsFromFirestore(),
     saveCache: async (articles) => {
-      const mcqs = await generateDailyCurrentAffairsMCQsAsync(articles, 5);
-      await saveCurrentAffairsToFirestore(articles, mcqs);
-      cachedArticles = articles;
-      cachedMcqs = mcqs;
+      const outcome = await persistArticlesThenGenerateMcqs(articles, {
+        saveArticles: (a) => saveCurrentAffairsToFirestore(a),
+        // generateDailyCurrentAffairsMCQsAsync persists the merged MCQ list itself.
+        generateMcqs: (a) => generateDailyCurrentAffairsMCQsAsync(a, 5),
+      });
+      mcqsGenerated = outcome.mcqsGenerated;
     },
   });
 
@@ -375,7 +422,7 @@ export async function executeNewsIngestionPipeline(): Promise<IngestionResult> {
     failedSources: result.failedSources,
   };
 
-  return result;
+  return { ...result, mcqsGenerated };
 }
 
 export interface McqValidationResult {

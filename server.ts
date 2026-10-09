@@ -10,11 +10,9 @@ import dotenv from "dotenv";
 import { fetchAndParseRssFeed, POPULAR_UPSC_FEEDS } from "./server/rssService";
 import {
   executeNewsIngestionPipeline,
-  generateDailyCurrentAffairsMCQs,
   generateDailyCurrentAffairsMCQsAsync,
   getPipelineStatus,
   getPipelineStatusFromFirestore,
-  loadCurrentAffairsFromDisk,
   loadCurrentAffairsFromFirestore,
   validatePrelimsMcq,
 } from "./server/currentAffairsPipeline";
@@ -1354,19 +1352,27 @@ function isApprovedFeedUrl(rawUrl: string): boolean {
 
 let newsSyncInProgress = false;
 
-function hasNewsCronSecret(req: express.Request): boolean {
-  const expected = process.env.NEWS_CRON_SECRET;
-  if (!expected) return false;
-  const header = req.headers.authorization || "";
-  const bearer = header.replace(/^Bearer\s+/i, "");
-  return bearer === expected || req.headers["x-news-cron-secret"] === expected;
+// Vercel Cron sends `Authorization: Bearer $CRON_SECRET`; external schedulers may use
+// NEWS_CRON_SECRET. Either configured secret is accepted (mirrors api/news/sync.ts).
+function newsCronSecrets(): string[] {
+  return [process.env.NEWS_CRON_SECRET, process.env.CRON_SECRET].filter((s): s is string => Boolean(s));
 }
 
-app.post("/api/news/sync", async (req, res) => {
+function hasNewsCronSecret(req: express.Request): boolean {
+  const expected = newsCronSecrets();
+  if (expected.length === 0) return false;
+  const header = req.headers.authorization || "";
+  const bearer = header.replace(/^Bearer\s+/i, "");
+  const custom = req.headers["x-news-cron-secret"];
+  return expected.some((s) => bearer === s || custom === s);
+}
+
+async function handleNewsSync(req: express.Request, res: express.Response) {
   if (!hasNewsCronSecret(req)) {
-    return res.status(process.env.NEWS_CRON_SECRET ? 403 : 503).json({
+    const configured = newsCronSecrets().length > 0;
+    return res.status(configured ? 403 : 503).json({
       success: false,
-      error: process.env.NEWS_CRON_SECRET ? "Invalid news sync credential." : "NEWS_CRON_SECRET is not configured.",
+      error: configured ? "Invalid news sync credential." : "CRON_SECRET / NEWS_CRON_SECRET is not configured.",
     });
   }
   if (newsSyncInProgress) {
@@ -1383,7 +1389,11 @@ app.post("/api/news/sync", async (req, res) => {
   } finally {
     newsSyncInProgress = false;
   }
-});
+}
+
+// GET is what Vercel Cron issues; POST is kept for external schedulers.
+app.get("/api/news/sync", handleNewsSync);
+app.post("/api/news/sync", handleNewsSync);
 
 // Fetch & Parse single RSS/Atom Feed URL — restricted to approved source hostnames only.
 app.post("/api/news/fetch-feed", requireAuth, async (req, res) => {
@@ -1558,15 +1568,20 @@ app.get("/api/news/pipeline/status", requireAuth, async (_req, res) => {
   }
 });
 
-app.post("/api/news/pipeline/mcqs", requireAuth, aiRateLimiter, (req, res) => {
+// Serves the already-validated MCQs persisted by the ingestion pipeline. (This route used to
+// call the synchronous generator, which is disabled for production safety and always
+// returned an empty list.) Generation itself happens in the pipeline / "mcq_generation" job.
+app.post("/api/news/pipeline/mcqs", requireAuth, async (req, res) => {
   try {
-    const count = parseInt(req.body.count || "5", 10);
-    const articles = loadCurrentAffairsFromDisk();
-    const mcqs = generateDailyCurrentAffairsMCQs(articles, count);
+    const requested = parseInt(req.body?.count ?? "5", 10);
+    const count = Math.min(Math.max(Number.isFinite(requested) ? requested : 5, 1), 20);
+    const { mcqs } = await loadCurrentAffairsFromFirestore();
+    const selected = (mcqs || []).slice(0, count);
     res.json({
       success: true,
-      count: mcqs.length,
-      mcqs,
+      count: selected.length,
+      mcqs: selected,
+      source: "validated-cache",
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error?.message });
@@ -2279,17 +2294,17 @@ jobQueue.registerWorker("disaster_recovery_test", async (job) => {
 
 jobQueue.registerWorker("current_affairs_sync", async (job) => {
   jobQueue.updateProgress(job.id, 30);
+  // The pipeline persists the articles first and then generates MCQs (best effort), so
+  // MCQs must not be generated a second time here.
   const res = await executeNewsIngestionPipeline();
-  jobQueue.updateProgress(job.id, 70);
-  const mcqs = await generateDailyCurrentAffairsMCQsAsync(res.articles, 5);
   jobQueue.updateProgress(job.id, 100);
-  return { newlyIngested: res.newlyIngested, mcqsGenerated: mcqs.length };
+  return { newlyIngested: res.newlyIngested, mcqsGenerated: res.mcqsGenerated ?? 0 };
 });
 
 jobQueue.registerWorker("mcq_generation", async (job) => {
   const count = job.params.count || 5;
-  const articles = loadCurrentAffairsFromDisk();
-  const mcqs = generateDailyCurrentAffairsMCQs(articles, count);
+  const { articles } = await loadCurrentAffairsFromFirestore();
+  const mcqs = await generateDailyCurrentAffairsMCQsAsync(articles, count);
   return { count: mcqs.length, mcqs };
 });
 
