@@ -475,6 +475,21 @@ export const NewsView: React.FC<NewsViewProps> = ({
     } catch {}
   };
 
+  // Convert API errors to readable text; Error(object) otherwise becomes "[object Object]".
+  const describeApiError = (value: unknown, fallback: string): string => {
+    if (typeof value === "string" && value.trim()) return value;
+    if (value instanceof Error && value.message) return value.message;
+    if (value && typeof value === "object") {
+      const obj = value as Record<string, unknown>;
+      for (const key of ["message", "error", "detail", "reason"]) {
+        const candidate = obj[key];
+        if (typeof candidate === "string" && candidate.trim()) return candidate;
+      }
+      try { return JSON.stringify(value); } catch {}
+    }
+    return fallback;
+  };
+
   // Background API Trigger Implementation
   const executeScheduledNewsSync = async (isManualTrigger: boolean = false) => {
     if (isBackgroundSyncing) return;
@@ -499,7 +514,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
         throw new Error("Authentication failure: Please log in to access verified current affairs.");
       }
       if (response.status >= 500 || data.state === "backend_failure") {
-        throw new Error(data.message || data.error || "Backend failure: Current affairs service is temporarily unavailable.");
+        throw new Error(describeApiError(data.message ?? data.error, "Backend failure: Current affairs service is temporarily unavailable."));
       }
       if (data.state === "upstream_failure") {
         setFeedNotification({
@@ -574,7 +589,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
           return next;
         });
       } else {
-        throw new Error(data.error || "Unexpected payload from daily current affairs API");
+        throw new Error(describeApiError(data.error ?? data.message, "Unexpected payload from daily current affairs API"));
       }
     } catch (err: any) {
       console.warn("Background current affairs fetch error:", err);
@@ -584,7 +599,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
         added: 0,
         sources: ["Pipeline"],
         status: "error" as const,
-        message: err?.message || "Sync failed",
+        message: describeApiError(err, "Sync failed"),
       };
       setSchedulerLogs((prev) => {
         const next = [logEntry, ...prev.slice(0, 9)];
@@ -597,7 +612,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
       if (isManualTrigger) {
         setFeedNotification({
           type: "error",
-          message: err?.message || "Background task encountered an error connecting to news APIs.",
+          message: describeApiError(err, "Background task encountered an error connecting to news APIs."),
         });
       }
     } finally {
