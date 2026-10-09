@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import type { Request, Response } from "express";
-import { executeNewsIngestionPipeline } from "../../server/currentAffairsPipeline";
+import { executeNewsIngestionPipeline } from "../../server/currentAffairsPipeline.js";
 
 let newsSyncInFlight: Promise<Awaited<ReturnType<typeof executeNewsIngestionPipeline>>> | null = null;
 
