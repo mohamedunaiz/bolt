@@ -21,6 +21,7 @@ import {
   persistArticlesThenGenerateMcqs,
   type IngestionDeps,
 } from "../server/currentAffairsPipeline";
+import { fetchGroundedNews } from "../server/liveNewsFallback";
 import type { NewsArticle } from "../src/types";
 
 let passed = 0;
@@ -237,6 +238,63 @@ async function run() {
     }
     check("save failure propagates (never reported as success)", threw);
     check("no MCQ generation after a failed save", generatorCalled === false);
+  }
+
+  console.log("\n10. Web-search fallback: used only when every RSS source fails, and only with citations");
+  {
+    const cited = {
+      text: JSON.stringify({
+        articles: [
+          {
+            headline: "Cabinet clears new semiconductor scheme",
+            summary: "The Union Cabinet approved a fresh incentive scheme for semiconductor fabrication units. It aims to cut import dependence.",
+            keyHighlights: ["Fiscal support for fabs", "Targets import dependence"],
+            gsTags: ["GS 3"],
+            publisher: "The Hindu",
+            prelimsFact: "Semiconductor incentive scheme approved.",
+            mainsRelevance: "Industrial policy and self-reliance.",
+            possibleMainsQuestion: "Discuss India's semiconductor strategy.",
+          },
+          { headline: "", summary: "too short" },
+        ],
+      }),
+      sources: [{ url: "https://www.thehindu.com/a", title: "thehindu.com" }],
+    };
+    const grounded = await fetchGroundedNews({ search: async () => cited });
+    check("cited story becomes one article, junk item dropped", grounded.length === 1);
+    check("article links to the cited page and is marked live", grounded[0]?.sourceUrl === "https://www.thehindu.com/a" && grounded[0]?.isLive === true);
+    check("no citations => no articles (never invented)", (await fetchGroundedNews({ search: async () => ({ text: cited.text, sources: [] }) })).length === 0);
+    check("unparseable model output => no articles", (await fetchGroundedNews({ search: async () => ({ text: "not json", sources: cited.sources }) })).length === 0);
+
+    // all RSS fail + fallback supplies news -> cached and reported
+    let savedCount = 0;
+    const viaFallback = await runNewsIngestion(makeDeps({
+      fetchFeed: async () => ({ success: false, articles: [], error: "blocked", errorKind: "http_error", httpStatus: 403 }),
+      saveCache: async (a) => { savedCount = a.length; },
+      fetchFallback: async () => grounded,
+    }));
+    check("fallback articles are saved when all RSS sources fail", savedCount === 1 && viaFallback.cacheWritten === true);
+    check("fallback source is reported in sourceHealth", viaFallback.sourceHealth.some((h) => /Web Search/.test(h.source) && h.status === "ok"));
+
+    // RSS works -> fallback never called
+    let fallbackCalled = false;
+    await runNewsIngestion(makeDeps({
+      fetchFeed: async (url) => url.includes("a.example")
+        ? { success: true, articles: [makeArticle("z1", "RSS headline")], durationMs: 1 }
+        : { success: false, articles: [], error: "skip" },
+      fetchFallback: async () => { fallbackCalled = true; return grounded; },
+    }));
+    check("fallback is skipped when RSS delivers", fallbackCalled === false);
+
+    // fallback throws -> existing cache retained, no write
+    let wrote = false;
+    const failedBoth = await runNewsIngestion(makeDeps({
+      fetchFeed: async () => ({ success: false, articles: [], error: "blocked" }),
+      loadCache: async () => ({ articles: [makeArticle("old", "Yesterday")], mcqs: [], updatedAt: null }),
+      saveCache: async () => { wrote = true; },
+      fetchFallback: async () => { throw new Error("GEMINI_API_KEY is not configured"); },
+    }));
+    check("fallback failure keeps old cache and writes nothing", failedBoth.cacheRetained === true && wrote === false);
   }
 
   console.log("\n===========================================");
