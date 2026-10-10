@@ -11,7 +11,8 @@
   ],
   "functions": {
     "api/**": {
-      "includeFiles": "server-build/server.cjs"
+      "includeFiles": "server-build/server.cjs",
+      "maxDuration": 60
     }
   }
 }

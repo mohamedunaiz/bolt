@@ -30,7 +30,10 @@
     "test:serverless": "tsx scripts/test-serverless-runtime.ts",
     "test:acceptance": "tsx scripts/run-acceptance-tests.ts",
     "benchmark": "tsx scripts/run-bolt-benchmark.ts",
-    "test:vercel-runtime": "node --no-experimental-require-module --import tsx scripts/test-vercel-runtime.ts"
+    "test:vercel-runtime": "node --no-experimental-require-module --import tsx scripts/test-vercel-runtime.ts",
+    "test:health": "tsx scripts/test-health-and-jobs.ts",
+    "test:auth": "tsx scripts/test-auth-forgery.ts",
+    "smoke:prod": "node scripts/smoke-production.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

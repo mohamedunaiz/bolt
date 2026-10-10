@@ -396,6 +396,34 @@ class BoltJobQueueManager {
     return job;
   }
 
+  /**
+   * Drive the queue until `jobId` reaches a terminal state or `timeoutMs` elapses.
+   * Needed on serverless hosts, where work scheduled with setTimeout after the response is sent can be
+   * frozen and never finish. Returns the job's latest state (possibly still queued/running on timeout).
+   */
+  async runNow(jobId: string, timeoutMs = 45000): Promise<BackgroundJob | null> {
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const deadline = Date.now() + timeoutMs;
+    const find = () => this.jobs.find((j) => j.id === jobId) ?? null;
+
+    while (Date.now() < deadline) {
+      const job = find();
+      if (!job || (job.status !== "queued" && job.status !== "running")) return job;
+      if (job.status === "queued" && job.nextRunAt && job.nextRunAt > Date.now()) {
+        if (job.nextRunAt > deadline) return job; // retry back-off outlasts this request
+        await sleep(Math.min(job.nextRunAt - Date.now(), deadline - Date.now()));
+        continue;
+      }
+      if (this.isProcessing) {
+        await sleep(100); // another job is running in this process
+        continue;
+      }
+      await this.processQueue();
+      if (find()?.status === "queued") await sleep(100); // lock contention: avoid a hot loop
+    }
+    return find();
+  }
+
   private scheduleNext() {
     if (this.isProcessing) return;
     setTimeout(() => this.processQueue(), 50);

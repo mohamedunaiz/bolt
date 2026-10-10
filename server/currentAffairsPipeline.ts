@@ -807,9 +807,9 @@ export function getPipelineStatus(): PipelineStatus {
   const distinctSources = Array.from(new Set(cachedArticles.map((a) => a.source).filter(Boolean)));
 
   return {
-    lastRunTimestamp: lastRunTimestamp || new Date().toISOString(),
+    lastRunTimestamp, // null until a sync has actually stored data (never fabricated)
     totalArticlesCount: cachedArticles.length,
-    sourcesSynced: distinctSources.length > 0 ? distinctSources : ["The Hindu", "PIB", "The Indian Express"],
+    sourcesSynced: distinctSources,
     todayArticlesCount: todayCount || cachedArticles.length,
     dailyMcqsCount: cachedMcqs.length,
     sources: {
