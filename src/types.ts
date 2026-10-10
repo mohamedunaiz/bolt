@@ -494,7 +494,8 @@ export interface NewsArticle {
     | "BBC News"
     | "Sansad TV"
     | "NITI Aayog"
-    | "Yojana & Kurukshetra";
+    | "Yojana & Kurukshetra"
+    | "Web Search";
   headline: string;
   page?: string;
   gsTags: string[];

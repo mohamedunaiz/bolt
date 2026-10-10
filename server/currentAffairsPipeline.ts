@@ -4,6 +4,7 @@ import { NewsArticle, PrelimsQuestion } from "../src/types";
 import { fetchAndParseRssFeed, POPULAR_UPSC_FEEDS } from "./rssService.js";
 import { getGeminiClient, executeGeminiWithFailover, parseFirstJsonObject } from "./aiGateway.js";
 import { initFirebaseAdmin, getAdminFirestore } from "./firebaseAdmin.js";
+import { fetchGroundedNews } from "./liveNewsFallback.js";
 
 /**
  * BOLT UPSC Current Affairs Processing Pipeline
@@ -282,6 +283,11 @@ export interface IngestionDeps {
   }>;
   loadCache: () => Promise<{ articles: NewsArticle[]; mcqs: PrelimsQuestion[]; updatedAt: string | null }>;
   saveCache: (articles: NewsArticle[]) => Promise<void>;
+  /**
+   * Optional second path, used only when EVERY feed produced nothing (e.g. publishers block
+   * the host). Must return real, cited articles or throw/return [] - never invented news.
+   */
+  fetchFallback?: () => Promise<NewsArticle[]>;
 }
 
 /**
@@ -325,6 +331,26 @@ export async function runNewsIngestion(deps: IngestionDeps): Promise<IngestionRe
       sourceHealth.push({ source: feed.name, url: feed.url, status: "failed", articleCount: 0, errorKind: result.errorKind, httpStatus: result.httpStatus ?? null, durationMs: result.durationMs, error });
     }
   });
+
+  if (collected.length === 0 && deps.fetchFallback) {
+    const startedAt = Date.now();
+    try {
+      const fallbackArticles = await deps.fetchFallback();
+      if (fallbackArticles.length > 0) {
+        successfulSources.push("Web Search (AI summaries)");
+        collected.push(...fallbackArticles);
+        sourceHealth.push({ source: "Web Search (AI summaries)", url: "google-search-grounding", status: "ok", articleCount: fallbackArticles.length, durationMs: Date.now() - startedAt });
+      } else {
+        const error = "Web search fallback returned no cited articles.";
+        failedSources.push({ source: "Web Search (AI summaries)", error });
+        sourceHealth.push({ source: "Web Search (AI summaries)", url: "google-search-grounding", status: "failed", articleCount: 0, errorKind: "empty_feed", error, durationMs: Date.now() - startedAt });
+      }
+    } catch (e: any) {
+      const error = e?.message || "Web search fallback failed.";
+      failedSources.push({ source: "Web Search (AI summaries)", error });
+      sourceHealth.push({ source: "Web Search (AI summaries)", url: "google-search-grounding", status: "failed", articleCount: 0, errorKind: "network", error, durationMs: Date.now() - startedAt });
+    }
+  }
 
   const snapshot = await deps.loadCache();
   const previousArticles = [...snapshot.articles];
@@ -403,6 +429,7 @@ export async function executeNewsIngestionPipeline(): Promise<IngestionResult> {
   const result = await runNewsIngestion({
     feeds: POPULAR_UPSC_FEEDS,
     fetchFeed: (url, source) => fetchAndParseRssFeed(url, source),
+    fetchFallback: () => fetchGroundedNews(),
     loadCache: () => loadCurrentAffairsFromFirestore(),
     saveCache: async (articles) => {
       const outcome = await persistArticlesThenGenerateMcqs(articles, {
