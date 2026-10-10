@@ -39,8 +39,9 @@ import {
   KnowledgeChunk,
 } from "./server/ragService";
 import { computeTopicDiagnostic } from "./server/knowledgeScoring";
-import { isPythonAvailable, assertPythonAvailable, PythonUnavailableError } from "./server/runtimeEnv";
-import { BoltAIGateway, getGatewayConfig, updateGatewayConfig, executeGeminiWithFailover, getGeminiClient } from "./server/aiGateway";
+import { isPythonAvailable, assertPythonAvailable, PythonUnavailableError, isServerless } from "./server/runtimeEnv";
+import { summarizeAiHealth, summarizePipelineHealth, hasUsableKey } from "./server/healthSummary";
+import { BoltAIGateway, getGatewayConfig, updateGatewayConfig, executeGeminiWithFailover, getGeminiClient, isGeminiKeyDenied } from "./server/aiGateway";
 import { StudentIntelligenceEngine, CANONICAL_TOPIC_GRAPH } from "./server/studentIntelligence";
 import { BoltAgentRuntime } from "./server/boltAgentRuntime";
 import { ModelPlatformService } from "./server/modelPlatform";
@@ -121,7 +122,8 @@ app.use("/api/progress", requireAuth);
 // ----------------------------------------------------
 
 async function buildHealthSnapshot() {
-  const geminiAvailable = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "MY_GEMINI_API_KEY";
+  const aiHealth = summarizeAiHealth(process.env, isGeminiKeyDenied());
+  const geminiAvailable = aiHealth.status === "configured";
   const pythonStatus = isPythonAvailable() ? "active" : "unavailable";
 
   const pipelineStatus = await getPipelineStatusFromFirestore();
@@ -176,12 +178,19 @@ async function buildHealthSnapshot() {
         indexedDocuments: docCount,
       },
       ai: {
-        status: geminiAvailable ? "connected" : "fallback_ready",
-        provider: geminiAvailable ? "Google Gemini" : "Bolt Academic Rules",
+        // "configured" means a key is present, NOT that the model answered. See /api/health/deep.
+        status: aiHealth.status,
+        provider: aiHealth.provider ?? "Bolt Academic Rules (fallback, no model)",
+        verified: aiHealth.verified,
+        ignoredProviderKeys: aiHealth.ignoredProviderKeys,
+        note: aiHealth.note,
       },
       pythonEngine: { status: pythonStatus },
       currentAffairsPipeline: {
-        status: "active",
+        ...(() => {
+          const h = summarizePipelineHealth(pipelineStatus, { aiConfigured: geminiAvailable });
+          return { status: h.state, reason: h.reason };
+        })(),
         articlesCached: pipelineStatus.totalArticlesCount,
         dailyMcqsGenerated: pipelineStatus.dailyMcqsCount,
         lastRunTime: pipelineStatus.lastRunTimestamp,
@@ -235,6 +244,75 @@ app.get("/api/health", async (_req, res) => {
   const snapshot = await buildHealthSnapshot();
   const statusCode = snapshot.status === "ok" ? 200 : 503;
   res.status(statusCode).json(snapshot);
+});
+
+
+// Deep, admin-only verification: actually calls the model and round-trips a Firestore write.
+// Unlike /api/health (cheap, public, "configured" semantics), this proves the integrations work.
+app.get("/api/health/deep", requireAdmin, async (_req, res) => {
+  const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+    Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms))]);
+  const checks: Record<string, any> = {};
+
+  // 1. Real model call
+  const aiHealth = summarizeAiHealth(process.env, isGeminiKeyDenied());
+  if (aiHealth.status === "not_configured") {
+    checks.ai = { ok: false, error: aiHealth.note };
+  } else {
+    try {
+      const r = await withTimeout(BoltAIGateway.testConnection({ provider: "gemini" }), 25000, "AI probe");
+      checks.ai = { ok: Boolean(r.connected), provider: r.provider, model: r.model, latencyMs: r.latencyMs, message: r.message };
+    } catch (e: any) {
+      checks.ai = { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  // 2. Firestore write -> read -> delete round trip (proves persistence works, not just auth)
+  try {
+    const t0 = Date.now();
+    const db = getAdminFirestore();
+    if (!db) throw new Error("Firestore Admin is not configured");
+    const ref = db.collection("_healthchecks").doc(`deep-${Date.now()}`);
+    const token = Math.random().toString(36).slice(2);
+    await withTimeout(ref.set({ token, at: new Date().toISOString() }), 10000, "Firestore write");
+    const snap = await withTimeout(ref.get(), 10000, "Firestore read");
+    await ref.delete().catch(() => undefined);
+    checks.firestore = { ok: snap.exists && snap.data()?.token === token, latencyMs: Date.now() - t0 };
+  } catch (e: any) {
+    checks.firestore = { ok: false, error: e?.message || String(e) };
+  }
+
+  // 3. Current-affairs data: freshness + MCQ structural validity
+  try {
+    const { articles, mcqs } = await loadCurrentAffairsFromFirestore();
+    const pipeline = await getPipelineStatusFromFirestore();
+    const summary = summarizePipelineHealth(pipeline, { aiConfigured: hasUsableKey(process.env.GEMINI_API_KEY) });
+    const invalid = (mcqs || []).filter(
+      (q: any) =>
+        !q?.questionText ||
+        !Array.isArray(q.options) ||
+        q.options.length !== 4 ||
+        !["A", "B", "C", "D"].includes(q.correctOption) ||
+        !q.options.some((o: any) => o.key === q.correctOption),
+    );
+    checks.currentAffairs = {
+      ok: summary.state === "active" && invalid.length === 0,
+      state: summary.state,
+      reason: summary.reason,
+      articles: articles?.length ?? 0,
+      mcqs: mcqs?.length ?? 0,
+      invalidMcqs: invalid.length,
+      lastRun: pipeline.lastRunTimestamp,
+    };
+  } catch (e: any) {
+    checks.currentAffairs = { ok: false, error: e?.message || String(e) };
+  }
+
+  // 4. Job persistence
+  checks.jobs = { ok: !isServerless() || jobQueue.durable, durable: jobQueue.durable, serverless: isServerless() };
+
+  const ok = Object.values(checks).every((c: any) => c.ok);
+  res.status(ok ? 200 : 503).json({ ok, timestamp: new Date().toISOString(), checks });
 });
 
 // Automated Security & Data Isolation Audit Endpoint (internal diagnostics — admin only)
@@ -2505,8 +2583,11 @@ app.post("/api/jobs", requireAuth, async (req, res) => {
     // system-wide jobs), so ownership can always be enforced on read/retry.
     const ownerId = req.user!.isAdmin && params?.ownerId === "system" ? "system" : req.user!.uid;
     const job = jobQueue.enqueue(type, title, { ...(params || {}), ownerId });
-    await jobQueue.flush(); // serverless: the record must reach Firestore before the function is frozen
-    res.json({ success: true, job });
+    // Serverless instances are frozen once the response is sent, so a job started "in the background"
+    // may never finish. Run it to completion (bounded) inside this request instead.
+    const finalJob = isServerless() ? ((await jobQueue.runNow(job.id)) ?? job) : job;
+    await jobQueue.flush(); // the record must reach Firestore before the function is frozen
+    res.json({ success: true, job: finalJob });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -2543,8 +2624,9 @@ app.post("/api/jobs/:id/retry", requireAuth, async (req, res) => {
     if (!job) {
       return res.status(404).json({ success: false, error: "Job cannot be retried." });
     }
+    const finalJob = isServerless() ? ((await jobQueue.runNow(job.id)) ?? job) : job;
     await jobQueue.flush();
-    res.json({ success: true, job });
+    res.json({ success: true, job: finalJob });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

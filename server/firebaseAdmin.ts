@@ -198,6 +198,36 @@ export async function verifyFirebaseIdTokenStrict(
   }
 }
 
+export type FirebaseTokenVerification =
+  | { status: "valid"; uid: string; email?: string; emailVerified: boolean; admin: boolean; exp: number }
+  | { status: "invalid" }
+  | { status: "unavailable" };
+
+/**
+ * Verify a Firebase ID token's signature, issuer, audience and expiry with the Admin SDK.
+ * Revocation is NOT checked here (that needs an extra network round-trip per request); use
+ * verifyFirebaseIdTokenStrict wherever a token is exchanged for a new credential.
+ * Returns "unavailable" when Admin credentials are not configured so callers can decide
+ * whether to fail closed (production) or fall back (local development).
+ */
+export async function verifyFirebaseIdTokenSignature(idToken: string): Promise<FirebaseTokenVerification> {
+  try {
+    initFirebaseAdmin();
+    if (getApps().length === 0) return { status: "unavailable" };
+    const decoded = await getAuth().verifyIdToken(idToken, false);
+    return {
+      status: "valid",
+      uid: decoded.uid,
+      email: decoded.email,
+      emailVerified: decoded.email_verified === true,
+      admin: decoded.admin === true || decoded.role === "admin",
+      exp: decoded.exp,
+    };
+  } catch {
+    return { status: "invalid" };
+  }
+}
+
 /**
  * Mint a short-lived Firebase custom token for a verified uid.
  * Used to hand the BOLT Desktop app a credential after the user completes
