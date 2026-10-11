@@ -111,7 +111,7 @@ export async function generatePracticeBatch(input: { stage?: Stage; paper?: stri
   const saved: Question[] = [];
   let duplicatesSkipped = 0;
 
-  for (let offset = 0; offset < BATCH_SIZE; offset += MODEL_CHUNK_SIZE) {
+  for (let offset = 0; offset < BATCH_SIZE * 3 && saved.length < BATCH_SIZE; offset += MODEL_CHUNK_SIZE) {
     const count = MODEL_CHUNK_SIZE;
     const prompt = `Create exactly ${count} distinct UPSC Civil Services ${stage} practice questions for paper ${paper}. Topic focus: ${topic}. Difficulty: ${difficulty}.
 These are ORIGINAL PRACTICE QUESTIONS, NOT historical PYQs. Never claim a year asked, quote an official exam, or imply official provenance. Return only a JSON array.
