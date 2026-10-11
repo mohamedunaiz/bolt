@@ -1,8 +1,6 @@
 import crypto from "crypto";
 import type { Request, Response } from "express";
-import { executeNewsIngestionPipeline } from "../../server/currentAffairsPipeline.js";
-
-let newsSyncInFlight: Promise<Awaited<ReturnType<typeof executeNewsIngestionPipeline>>> | null = null;
+let newsSyncInFlight: Promise<any> | null = null;
 
 function getProvidedSecret(req: Request): string | null {
   const authorization = req.get("authorization");
@@ -40,6 +38,10 @@ export default async function handler(req: Request, res: Response) {
   }
 
   try {
+    // Load the ingestion pipeline only after authentication. A failure while loading
+    // one of its dependencies is now caught and logged by this handler, instead of
+    // crashing function initialization before it can return 401/503.
+    const { executeNewsIngestionPipeline } = await import("../../server/currentAffairsPipeline.js");
     newsSyncInFlight ??= executeNewsIngestionPipeline();
     const pipelineResult = await newsSyncInFlight;
     return res.status(200).json({
