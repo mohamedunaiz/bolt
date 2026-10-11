@@ -42,7 +42,7 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
   const [pyqs, setPyqs] = useState<UpscPyqItem[]>([]);
   const [recurringThemes, setRecurringThemes] = useState<RecurringThemeAnalysis[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);\n  const [isGeneratingPractice, setIsGeneratingPractice] = useState(false);\n  const [practiceStatus, setPracticeStatus] = useState<string | null>(null);
 
   // Filters
   const [selectedStage, setSelectedStage] = useState<"All" | "Prelims" | "Mains">("All");
@@ -71,10 +71,21 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
           fetch("/api/pyqs/analysis"),
         ]);
 
+        let officialQuestions: UpscPyqItem[] = [];
+        let generatedQuestions: UpscPyqItem[] = [];
         if (pyqsRes.ok) {
           const pyqsData = await pyqsRes.json();
-          if (isMounted && Array.isArray(pyqsData.pyqs)) {
-            setPyqs(pyqsData.pyqs);
+          if (Array.isArray(pyqsData.pyqs)) officialQuestions = pyqsData.pyqs;
+        }
+        if (practiceRes.ok) {
+          const practiceData = await practiceRes.json();
+          if (Array.isArray(practiceData.questions)) generatedQuestions = practiceData.questions;
+        }
+        if (isMounted) setPyqs([...officialQuestions, ...generatedQuestions]);
+        if (attemptsRes.ok) {
+          const attemptsData = await attemptsRes.json();
+          if (isMounted && Array.isArray(attemptsData.attempts)) {
+            setUserMcqAnswers(Object.fromEntries(attemptsData.attempts.map((a: any) => [a.questionId, a.selectedOption])));
           }
         }
 
@@ -161,8 +172,54 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
   // Handlers
   const handleSelectOption = (questionId: string, optionKey: string) => {
     if (userMcqAnswers[questionId]) return;
+    const question = pyqs.find((item) => item.id === questionId);
+    const isCorrect = Boolean(question?.correctOption && question.correctOption === optionKey);
     setUserMcqAnswers((prev) => ({ ...prev, [questionId]: optionKey }));
     setExpandedDetails((prev) => ({ ...prev, [questionId]: true }));
+    if (questionId.startsWith("bolt-practice-")) {
+      void fetch("/api/pyqs/practice/attempt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId, selectedOption: optionKey, isCorrect }),
+      }).then((response) => {
+        if (!response.ok) console.warn("Practice attempt was not persisted.");
+      }).catch((error) => console.warn("Practice attempt persistence failed:", error));
+    }
+  };
+
+  const handleGeneratePractice = async () => {
+    setIsGeneratingPractice(true);
+    setPracticeStatus(null);
+    try {
+      const response = await fetch("/api/pyqs/practice/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stage: selectedStage === "All" ? "Prelims" : selectedStage,
+          paper: selectedPaper === "All" ? (selectedStage === "Mains" ? "GS 2" : "GS 1") : selectedPaper,
+          topic: searchQuery.trim() || undefined,
+          difficulty: "Mixed",
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "Could not generate practice questions.");
+      const refreshed = await fetch("/api/pyqs/practice?limit=1000");
+      if (refreshed.ok) {
+        const data = await refreshed.json();
+        if (Array.isArray(data.questions)) {
+          setPyqs((current) => {
+            const official = current.filter((q) => q.verification.tier !== "PRACTICE_QUESTION");
+            return [...official, ...data.questions];
+          });
+        }
+      }
+      setSelectedTier("PRACTICE_QUESTION");
+      setPracticeStatus("Added " + result.created + " new practice questions. " + (result.duplicatesSkipped || 0) + " duplicates skipped.");
+    } catch (error: any) {
+      setPracticeStatus(error?.message || "Practice generation failed. Please try again.");
+    } finally {
+      setIsGeneratingPractice(false);
+    }
   };
 
   const toggleDetails = (questionId: string) => {
@@ -222,6 +279,15 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
               direct provenance links. Explore command-word breakdowns, 4-dimension demand analysis,
               thinkers to anchor, constitutional articles, and complete model answer frameworks.
             </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={handleGeneratePractice} disabled={isGeneratingPractice}
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60">
+                <Sparkles className="h-4 w-4" />
+                {isGeneratingPractice ? "Generating 100 questions…" : "Generate 100 Practice Questions"}
+              </button>
+              <span className="text-xs text-slate-400">AI practice is stored separately from official PYQs.</span>
+            </div>
+            {practiceStatus && <p role="status" className="mt-2 text-sm text-amber-200">{practiceStatus}</p>}
           </div>
 
           {/* Quick Score Snapshot */}
