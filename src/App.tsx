@@ -228,6 +228,20 @@ export default function App() {
   useEffect(() => {
     // 1. Listen to Firebase Auth state
     const unsubscribe = subscribeToAuthState(async (fbUser) => {
+      if (!fbUser) {
+        // Firebase confirms there is no signed-in user. Clear the in-memory
+        // account state too, otherwise the cached profile can make the UI look
+        // signed in after logout or a page refresh.
+        setUser(initialUserProfile);
+        setTopics(publicAdminSyllabus);
+        setEvaluations([]);
+        setTimetableSlots(DEFAULT_TIMETABLE_SLOTS);
+        setStudySessions([]);
+        setActiveTab("home");
+        setIsAuthModalOpen(false);
+        return;
+      }
+
       if (fbUser) {
         const userId = fbUser.uid;
         const saved = await loadUserProgress(userId);
@@ -402,24 +416,39 @@ export default function App() {
     triggerSaveProgress({ studySessions: newSessions });
   };
 
-  // Sign out handler: save data, clear session, and reset to clean slate
+  // Sign out immediately. A slow or failing progress sync must never block
+  // Firebase logout; attempt a best-effort save in the background first.
   const handleLogout = async () => {
-    if (user.email) {
-      await saveUserProgress({
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    if (user.email && user.id !== "aspirant-default" && user.email !== "aspirant@bolt.ai") {
+      void saveUserProgress({
         user,
         topics,
         evaluations,
         timetableSlots,
         studySessions,
-      });
+      }).catch((err) => console.warn("Final progress sync before logout failed:", err));
     }
-    logoutAccount();
-    setUser(initialUserProfile);
-    setTopics(publicAdminSyllabus);
-    setEvaluations([]);
-    setTimetableSlots(DEFAULT_TIMETABLE_SLOTS);
-    setStudySessions([]);
-    setActiveTab("home");
+
+    try {
+      await logoutAccount();
+    } catch (err) {
+      console.error("Could not complete Firebase sign-out:", err);
+      // The local UI is still reset below; the console error helps diagnose
+      // any Firebase/network issue instead of silently hiding it.
+    } finally {
+      setUser(initialUserProfile);
+      setTopics(publicAdminSyllabus);
+      setEvaluations([]);
+      setTimetableSlots(DEFAULT_TIMETABLE_SLOTS);
+      setStudySessions([]);
+      setActiveTab("home");
+      setIsAuthModalOpen(false);
+    }
   };
 
   // Apply restored user & progress upon successful login
