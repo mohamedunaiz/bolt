@@ -492,13 +492,18 @@ export async function signInWithGoogle(): Promise<{
  * Sign out current user
  */
 export async function logoutAccount(): Promise<void> {
+  // Remove app-owned session hints even if Firebase sign-out reports an error.
   try {
-    await signOut(auth);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(CURRENT_USER_KEY);
   } catch (e) {
-    console.warn("Firebase sign-out error:", e);
+    console.warn("Could not clear local session hints:", e);
   }
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-  localStorage.removeItem(CURRENT_USER_KEY);
+
+  // Do not swallow this error: callers can log it and still reset the UI.
+  // Awaiting signOut also guarantees the auth state observer receives the
+  // signed-out state before this function completes.
+  await signOut(auth);
 }
 
 /**
