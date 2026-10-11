@@ -51,7 +51,7 @@ import {
   getRecurringThemeAnalytics,
   getTopicPyqIntelligence,
   getPyqById,
-} from "./server/pyqIntelligence";
+} from "./server/pyqIntelligence";\nimport { listGeneratedPracticeQuestions, generatePracticeBatch, savePracticeAttempt } from "./server/pyqPracticeBank";
 import { executeBoltBenchmarkSuite } from "./server/boltBenchmarkSuite";
 import { jobQueue } from "./server/jobQueue";
 import { createFullBackup, createFullBackupAsync, listBackups, runDisasterRecoveryVerification } from "./server/disasterRecovery";
@@ -2512,7 +2512,7 @@ app.get("/api/pyqs/:id", requireAuth, (req, res) => {
 });
 
 // ----------------------------------------------------
-// ADVANCED RAG WITH CITATIONS & EVIDENCE GUARD
+app.get("/api/pyqs/practice", requireAuth, async (req, res) => {\n  try {\n    const limit = Math.max(1, Math.min(1000, Number(req.query.limit) || 500));\n    const questions = await listGeneratedPracticeQuestions(limit);\n    const stage = req.query.stage as string | undefined;\n    const paper = req.query.paper as string | undefined;\n    const topic = String(req.query.topic || "").toLowerCase();\n    const filtered = questions.filter((q: any) => (!stage || stage === "All" || q.stage === stage) && (!paper || paper === "All" || q.paper === paper) && (!topic || (String(q.topic) + " " + String(q.subtopic) + " " + String(q.questionText)).toLowerCase().includes(topic)));\n    res.json({ success: true, count: filtered.length, questions: filtered, tier: "PRACTICE_QUESTION" });\n  } catch (err: any) { res.status(503).json({ success: false, error: err.message || "Practice bank unavailable." }); }\n});\n\napp.post("/api/pyqs/practice/generate", requireAuth, aiRateLimiter, heavyTaskLimiter, async (req, res) => {\n  try {\n    const result = await generatePracticeBatch({ stage: req.body?.stage, paper: req.body?.paper, topic: req.body?.topic, difficulty: req.body?.difficulty });\n    res.status(201).json({ success: true, ...result, tier: "PRACTICE_QUESTION" });\n  } catch (err: any) { console.error("Practice question generation failed:", err); res.status(503).json({ success: false, error: err.message || "Could not generate practice questions." }); }\n});\n\napp.post("/api/pyqs/practice/attempt", requireAuth, async (req, res) => {\n  try {\n    const { questionId, selectedOption, isCorrect } = req.body || {};\n    if (typeof questionId !== "string" || !questionId.startsWith("bolt-practice-") || typeof selectedOption !== "string" || typeof isCorrect !== "boolean") return res.status(400).json({ success: false, error: "Invalid practice attempt." });\n    await savePracticeAttempt(req.user!.uid, questionId, selectedOption, isCorrect);\n    res.json({ success: true });\n  } catch (err: any) { res.status(503).json({ success: false, error: err.message || "Could not save attempt." }); }\n});\n\n// // ADVANCED RAG WITH CITATIONS & EVIDENCE GUARD
 // ----------------------------------------------------
 app.post("/api/rag/search-advanced", requireAuth, (req, res) => {
   try {
