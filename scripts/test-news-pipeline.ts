@@ -22,6 +22,7 @@ import {
   type IngestionDeps,
 } from "../server/currentAffairsPipeline";
 import { fetchGroundedNews } from "../server/liveNewsFallback";
+import { ensureNewsLoaded, type NewsSyncStatus } from "../server/newsBootstrap";
 import type { NewsArticle } from "../src/types";
 
 let passed = 0;
@@ -295,6 +296,62 @@ async function run() {
       fetchFallback: async () => { throw new Error("GEMINI_API_KEY is not configured"); },
     }));
     check("fallback failure keeps old cache and writes nothing", failedBoth.cacheRetained === true && wrote === false);
+  }
+
+  console.log("\n11. Empty store self-heals: bounded, rate-limited ingestion that records why it failed");
+  {
+    const mk = (over: Partial<NewsSyncStatus> | null) => {
+      let stored: NewsSyncStatus | null = over ? ({ attemptedAt: new Date(1_000_000).toISOString(), inFlight: false, ...over } as NewsSyncStatus) : null;
+      const writes: NewsSyncStatus[] = [];
+      return {
+        writes,
+        get stored() { return stored; },
+        readStatus: async () => stored,
+        writeStatus: async (s: NewsSyncStatus) => { stored = s; writes.push(s); },
+      };
+    };
+    const okRun = async () => ({ newlyIngested: 3, mcqsGenerated: 1, articles: [{}, {}, {}], successfulSources: ["The Hindu"], failedSources: [] });
+
+    // first ever read: runs once, records success
+    let runs = 0;
+    const s1 = mk(null);
+    const r1 = await ensureNewsLoaded({ ...s1, runIngestion: async () => { runs++; return okRun(); }, now: () => 5_000_000 });
+    check("empty store triggers one ingestion", r1.attempted && runs === 1);
+    check("success is recorded (in-flight marker first, then result)", s1.writes.length === 2 && s1.writes[0].inFlight === true && s1.stored?.ok === true && s1.stored?.newlyIngested === 3);
+
+    // cooldown: a recent failed attempt is not repeated
+    const s2 = mk({ attemptedAt: new Date(5_000_000 - 60_000).toISOString(), ok: false, error: "all sources blocked" });
+    const r2 = await ensureNewsLoaded({ ...s2, runIngestion: async () => { runs++; return okRun(); }, now: () => 5_000_000 });
+    check("recent attempt => cooldown, no new ingestion", !r2.attempted && r2.skippedReason === "cooldown" && runs === 1);
+    check("cooldown returns the stored failure reason", r2.status?.error === "all sources blocked");
+
+    // old attempt: retried
+    const s3 = mk({ attemptedAt: new Date(5_000_000 - 3_600_000).toISOString(), ok: false });
+    const r3 = await ensureNewsLoaded({ ...s3, runIngestion: async () => { runs++; return okRun(); }, now: () => 5_000_000 });
+    check("attempt older than the cooldown is retried", r3.attempted && runs === 2);
+
+    // in flight (fresh) is respected; a dead in-flight marker is not
+    const s4 = mk({ attemptedAt: new Date(5_000_000 - 10_000).toISOString(), inFlight: true });
+    const r4 = await ensureNewsLoaded({ ...s4, runIngestion: async () => { runs++; return okRun(); }, now: () => 5_000_000 });
+    check("fresh in-flight marker => skipped (in_flight)", !r4.attempted && r4.skippedReason === "in_flight" && runs === 2);
+    const s5 = mk({ attemptedAt: new Date(5_000_000 - 600_000).toISOString(), inFlight: true });
+    const r5 = await ensureNewsLoaded({ ...s5, runIngestion: async () => { runs++; return okRun(); }, now: () => 5_000_000 });
+    check("stale in-flight marker (dead run) does not block forever", r5.attempted && runs === 3);
+
+    // all sources empty => not ok, explained
+    const s6 = mk(null);
+    const r6 = await ensureNewsLoaded({ ...s6, runIngestion: async () => ({ newlyIngested: 0, articles: [], successfulSources: [], failedSources: [{ source: "PIB", error: "HTTP 403" }] }), now: () => 5_000_000 });
+    check("zero articles => ok:false with reason and per-source errors", r6.status?.ok === false && /returned nothing/.test(r6.status?.error || "") && r6.status?.failedSources?.[0]?.source === "PIB");
+
+    // throwing pipeline and slow pipeline are contained
+    const s7 = mk(null);
+    const r7 = await ensureNewsLoaded({ ...s7, runIngestion: async () => { throw new Error("Firestore is not configured; current-affairs cache was not written."); }, now: () => 5_000_000 });
+    check("pipeline error is captured, not thrown", r7.attempted && r7.status?.ok === false && /not configured/.test(r7.status?.error || ""));
+    const s8 = mk(null);
+    const t0 = Date.now();
+    const r8 = await ensureNewsLoaded({ ...s8, runIngestion: () => new Promise((res) => setTimeout(() => res(okRun()), 2000)), budgetMs: 50, now: () => 5_000_000 });
+    check("slow pipeline is cut off by the budget", Date.now() - t0 < 1000 && /budget/.test(r8.status?.error || ""));
+    check("a failed status write never masks the result", (await ensureNewsLoaded({ readStatus: async () => null, writeStatus: async (s) => { if (!s.inFlight) throw new Error("write failed"); }, runIngestion: okRun, now: () => 5_000_000 })).status?.ok === true);
   }
 
   console.log("\n===========================================");
