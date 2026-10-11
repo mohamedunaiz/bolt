@@ -53,7 +53,7 @@ function parseArray(result: { parsedJson?: unknown; text: string }): unknown[] {
   if (Array.isArray(parsed?.questions)) return parsed.questions;
   throw new Error("AI response did not contain a question array");
 }
-function validateQuestion(raw: any, index: number, stage: Stage, paper: Question["paper"]): Omit<Question, "id" | "generatedAt"> | null {
+function validateQuestion(raw: any, stage: Stage, paper: Question["paper"]): Omit<Question, "id" | "generatedAt"> | null {
   if (!raw || typeof raw.questionText !== "string" || raw.questionText.trim().length < 20 ||
       typeof raw.topic !== "string" || typeof raw.explanation !== "string") return null;
   const difficulty = ["Easy", "Medium", "Hard"].includes(raw.difficulty) ? raw.difficulty : "Medium";
@@ -121,7 +121,7 @@ Questions must be factually defensible, syllabus-relevant, non-repetitive, with 
     const generated = await BoltAIGateway.generate({ prompt, responseFormat: "json", temperature: 0.65 });
     const rawItems = parseArray(generated);
     for (let i = 0; i < rawItems.length; i++) {
-      const item = validateQuestion(rawItems[i], offset + i, stage, paper);
+      const item = validateQuestion(rawItems[i], stage, paper);
       if (!item) continue;
       const hash = questionHash(item.questionText);
       if (seen.has(hash)) { duplicatesSkipped++; continue; }
