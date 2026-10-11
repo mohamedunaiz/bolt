@@ -2500,19 +2500,6 @@ app.get("/api/pyqs/topic/:topicName", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/pyqs/:id", requireAuth, (req, res) => {
-  try {
-    const pyq = getPyqById(req.params.id);
-    if (!pyq) {
-      return res.status(404).json({ success: false, error: "PYQ not found." });
-    }
-    res.json({ success: true, pyq });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ----------------------------------------------------
 app.get("/api/pyqs/practice", requireAuth, async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(1000, Number(req.query.limit) || 500));
@@ -2546,7 +2533,20 @@ app.post("/api/pyqs/practice/attempt", requireAuth, async (req, res) => {
   } catch (err: any) { res.status(503).json({ success: false, error: err.message || "Could not save attempt." }); }
 });
 
-// // ADVANCED RAG WITH CITATIONS & EVIDENCE GUARD
+app.get("/api/pyqs/:id", requireAuth, (req, res) => {
+  try {
+    const pyq = getPyqById(req.params.id);
+    if (!pyq) {
+      return res.status(404).json({ success: false, error: "PYQ not found." });
+    }
+    res.json({ success: true, pyq });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// ADVANCED RAG WITH CITATIONS & EVIDENCE GUARD
 // ----------------------------------------------------
 app.post("/api/rag/search-advanced", requireAuth, (req, res) => {
   try {
