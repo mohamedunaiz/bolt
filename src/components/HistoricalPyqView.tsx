@@ -266,7 +266,7 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold text-xs border border-emerald-500/30 flex items-center space-x-1.5">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>UPSC Official PYQ Repository</span>
+                <span>Verified PYQs + BOLT Practice</span>
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300 text-xs border border-blue-500/25">
                 Prelims GS-1 + Mains GS 1–4 & PubAdmin
