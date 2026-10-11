@@ -148,3 +148,13 @@ export async function savePracticeAttempt(userId: string, questionId: string, se
   const ref = db.collection(ATTEMPTS).doc(`${userId}_${questionId}`);
   await ref.set({ userId, questionId, selectedOption, isCorrect, attemptedAt: new Date().toISOString() }, { merge: true });
 }
+
+export async function listPracticeAttempts(userId: string): Promise<Array<{ questionId: string; selectedOption: string; isCorrect: boolean }>> {
+  const db = getAdminFirestore();
+  if (!db) throw new Error("Firestore Admin is not configured.");
+  const snapshot = await db.collection(ATTEMPTS).where("userId", "==", userId).limit(2000).get();
+  return snapshot.docs.map((doc: any) => {
+    const data = doc.data();
+    return { questionId: data.questionId, selectedOption: data.selectedOption, isCorrect: Boolean(data.isCorrect) };
+  });
+}
