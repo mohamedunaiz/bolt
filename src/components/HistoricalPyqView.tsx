@@ -275,12 +275,11 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-white font-['Outfit']">
-              Official UPSC Previous Year Questions (PYQs)
+              UPSC PYQs & BOLT Practice Bank
             </h1>
             <p className="text-sm text-slate-300 mt-1.5 max-w-3xl leading-relaxed">
-              Every question is verified against official UPSC Civil Services Examination papers with
-              direct provenance links. Explore command-word breakdowns, 4-dimension demand analysis,
-              thinkers to anchor, constitutional articles, and complete model answer frameworks.
+              Verified official UPSC PYQs retain their source citations. AI-generated questions are
+              separately labelled BOLT Practice Questions and are never represented as historical UPSC papers.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button type="button" onClick={handleGeneratePractice} disabled={isGeneratingPractice}
