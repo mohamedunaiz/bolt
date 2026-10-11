@@ -538,7 +538,7 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
                     ) : (
                       <span className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-bold text-xs border border-purple-500/30 flex items-center space-x-1.5">
                         <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                        <span>BOLT Practice Drill ({q.year})</span>
+                        <span>BOLT Practice Question (AI-generated)</span>
                       </span>
                     )}
 
