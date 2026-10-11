@@ -42,7 +42,8 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
   const [pyqs, setPyqs] = useState<UpscPyqItem[]>([]);
   const [recurringThemes, setRecurringThemes] = useState<RecurringThemeAnalysis[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [errorNotice, setErrorNotice] = useState<string | null>(null);\n  const [isGeneratingPractice, setIsGeneratingPractice] = useState(false);\n  const [practiceStatus, setPracticeStatus] = useState<string | null>(null);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [isGeneratingPractice, setIsGeneratingPractice] = useState(false);\n  const [practiceStatus, setPracticeStatus] = useState<string | null>(null);
 
   // Filters
   const [selectedStage, setSelectedStage] = useState<"All" | "Prelims" | "Mains">("All");
@@ -66,9 +67,11 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
       setIsLoading(true);
       setErrorNotice(null);
       try {
-        const [pyqsRes, themesRes] = await Promise.all([
+        const [pyqsRes, themesRes, practiceRes, attemptsRes] = await Promise.all([
           fetch("/api/pyqs/search"),
           fetch("/api/pyqs/analysis"),
+          fetch("/api/pyqs/practice?limit=1000"),
+          fetch("/api/pyqs/practice/attempts"),
         ]);
 
         let officialQuestions: UpscPyqItem[] = [];
