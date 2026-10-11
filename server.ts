@@ -41,6 +41,7 @@ import {
 import { computeTopicDiagnostic } from "./server/knowledgeScoring";
 import { isPythonAvailable, assertPythonAvailable, PythonUnavailableError, isServerless } from "./server/runtimeEnv";
 import { summarizeAiHealth, summarizePipelineHealth, hasUsableKey } from "./server/healthSummary";
+import { ensureNewsLoadedForServer } from "./server/newsBootstrap";
 import { BoltAIGateway, getGatewayConfig, updateGatewayConfig, executeGeminiWithFailover, getGeminiClient, isGeminiKeyDenied } from "./server/aiGateway";
 import { StudentIntelligenceEngine, CANONICAL_TOPIC_GRAPH } from "./server/studentIntelligence";
 import { BoltAgentRuntime } from "./server/boltAgentRuntime";
@@ -1704,9 +1705,11 @@ app.get("/api/news/daily-current-affairs", requireAuth, async (_req, res) => {
   try {
     const { articles: firestoreArticles } = await loadCurrentAffairsFromFirestore();
     let articles = firestoreArticles;
+    let sync: Awaited<ReturnType<typeof ensureNewsLoadedForServer>> | null = null;
     if (!articles || articles.length === 0) {
-      const pipelineResult = await executeNewsIngestionPipeline();
-      articles = pipelineResult.articles;
+      // Guarded (cooldown + in-flight) so readers cannot trigger unbounded ingestion.
+      sync = await ensureNewsLoadedForServer();
+      if (sync.attempted && sync.status?.ok) articles = (await loadCurrentAffairsFromFirestore()).articles;
     }
     const status = await getPipelineStatusFromFirestore();
     res.json({
@@ -1714,6 +1717,7 @@ app.get("/api/news/daily-current-affairs", requireAuth, async (_req, res) => {
       count: articles.length,
       articles,
       status,
+      sync: articles.length === 0 ? sync?.status ?? undefined : undefined,
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {

@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { loadCurrentAffairsFromFirestore } from "../../server/currentAffairsPipeline.js";
+import { ensureNewsLoadedForServer, type BootstrapResult } from "../../server/newsBootstrap.js";
 
 /**
  * Hosting-agnostic read-only current-affairs endpoint.
@@ -13,11 +14,21 @@ export default async function handler(req: Request, res: Response) {
   }
 
   try {
-    const result = await loadCurrentAffairsFromFirestore();
+    let result = await loadCurrentAffairsFromFirestore();
+    let sync: BootstrapResult | null = null;
+
+    // Empty store: do not wait for a cron that may never have run (or lacks CRON_SECRET).
+    // Trigger one bounded, rate-limited ingestion and record why it failed if it does.
+    if (!Array.isArray(result?.articles) || result.articles.length === 0) {
+      sync = await ensureNewsLoadedForServer();
+      if (sync.attempted && sync.status?.ok) result = await loadCurrentAffairsFromFirestore();
+    }
+
     const articles = Array.isArray(result?.articles) ? result.articles : [];
     const mcqs = Array.isArray(result?.mcqs) ? result.mcqs : [];
     const sources = [...new Set(articles.map((a) => a.source).filter(Boolean))];
     const state = articles.length > 0 ? "ok" : "empty";
+    const refreshing = sync?.skippedReason === "in_flight";
 
     return res.status(200).json({
       success: true,
@@ -29,7 +40,14 @@ export default async function handler(req: Request, res: Response) {
       sourceStats: { working: sources.length, failed: 0 },
       count: articles.length,
       updatedAt: result?.updatedAt ?? null,
-      message: state === "ok" ? undefined : "Today's current affairs are being refreshed. Please check back shortly.",
+      message:
+        state === "ok"
+          ? undefined
+          : refreshing
+            ? "Today's current affairs are being refreshed. Please check back shortly."
+            : "Current affairs could not be loaded right now. Please try again in a few minutes.",
+      // Why the store is empty (last attempt outcome); omitted when news is available.
+      sync: state === "ok" ? undefined : sync?.status ?? undefined,
     });
   } catch (error) {
     console.error("[NEWS] daily-current-affairs read failed:", error);
