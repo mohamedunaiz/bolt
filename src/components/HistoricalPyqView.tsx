@@ -43,7 +43,8 @@ export const HistoricalPyqView: React.FC<HistoricalPyqViewProps> = ({
   const [recurringThemes, setRecurringThemes] = useState<RecurringThemeAnalysis[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
-  const [isGeneratingPractice, setIsGeneratingPractice] = useState(false);\n  const [practiceStatus, setPracticeStatus] = useState<string | null>(null);
+  const [isGeneratingPractice, setIsGeneratingPractice] = useState(false);
+  const [practiceStatus, setPracticeStatus] = useState<string | null>(null);
 
   // Filters
   const [selectedStage, setSelectedStage] = useState<"All" | "Prelims" | "Mains">("All");
