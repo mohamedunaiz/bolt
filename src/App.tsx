@@ -1,20 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { Navigation } from "./components/Navigation";
 import { HomeDashboard } from "./components/HomeDashboard";
-import { SyllabusAnalyticsView } from "./components/SyllabusAnalyticsView";
-import { PrelimsPracticeView } from "./components/PrelimsPracticeView";
-import { MainsEvaluationView } from "./components/MainsEvaluationView";
-import { NewsView } from "./components/NewsView";
-import { TimetableAndTimerView } from "./components/TimetableAndTimerView";
-import { BoltAssistantView } from "./components/BoltAssistantView";
-import { KnowledgeBaseView } from "./components/KnowledgeBaseView";
-import { KnowledgeGraphVisualization } from "./components/KnowledgeGraphVisualization";
-import { MaterialUploadAndQuizView } from "./components/MaterialUploadAndQuizView";
-import { NcertFoundationView } from "./components/NcertFoundationView";
-import { HistoricalPyqView } from "./components/HistoricalPyqView";
-import { PythonEngineConsoleModal } from "./components/PythonEngineConsoleModal";
 import { SettingsModal } from "./components/SettingsModal";
-import { SettingsView } from "./components/SettingsView";
 import { AuthModal } from "./components/AuthModal";
 import {
   initialUserProfile,
@@ -42,6 +29,28 @@ import { cacheSyllabusOffline, cacheTimetableOffline, flushOfflineQueue } from "
 import { OfflineStatusIndicator } from "./components/OfflineStatusIndicator";
 import { ScrollToTopButton } from "./components/ScrollToTopButton";
 import { Search, Bookmark, X } from "lucide-react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+
+// Views are split into separate chunks and loaded on first visit.
+const SyllabusAnalyticsView = lazy(() => import("./components/SyllabusAnalyticsView").then((m) => ({ default: m.SyllabusAnalyticsView })));
+const PrelimsPracticeView = lazy(() => import("./components/PrelimsPracticeView").then((m) => ({ default: m.PrelimsPracticeView })));
+const MainsEvaluationView = lazy(() => import("./components/MainsEvaluationView").then((m) => ({ default: m.MainsEvaluationView })));
+const NewsView = lazy(() => import("./components/NewsView").then((m) => ({ default: m.NewsView })));
+const TimetableAndTimerView = lazy(() => import("./components/TimetableAndTimerView").then((m) => ({ default: m.TimetableAndTimerView })));
+const BoltAssistantView = lazy(() => import("./components/BoltAssistantView").then((m) => ({ default: m.BoltAssistantView })));
+const KnowledgeBaseView = lazy(() => import("./components/KnowledgeBaseView").then((m) => ({ default: m.KnowledgeBaseView })));
+const KnowledgeGraphVisualization = lazy(() => import("./components/KnowledgeGraphVisualization").then((m) => ({ default: m.KnowledgeGraphVisualization })));
+const MaterialUploadAndQuizView = lazy(() => import("./components/MaterialUploadAndQuizView").then((m) => ({ default: m.MaterialUploadAndQuizView })));
+const NcertFoundationView = lazy(() => import("./components/NcertFoundationView").then((m) => ({ default: m.NcertFoundationView })));
+const HistoricalPyqView = lazy(() => import("./components/HistoricalPyqView").then((m) => ({ default: m.HistoricalPyqView })));
+const PythonEngineConsoleModal = lazy(() => import("./components/PythonEngineConsoleModal").then((m) => ({ default: m.PythonEngineConsoleModal })));
+const SettingsView = lazy(() => import("./components/SettingsView").then((m) => ({ default: m.SettingsView })));
+
+const ViewFallback = () => (
+  <div className="flex items-center justify-center py-24 text-sm opacity-60" role="status" aria-live="polite">
+    Loading…
+  </div>
+);
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavigationTab>("home");
@@ -528,6 +537,8 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-grow">
+        <ErrorBoundary key={activeTab} label="this section">
+        <Suspense fallback={<ViewFallback />}>
         {activeTab === "home" && (
           <HomeDashboard
             user={user}
@@ -665,6 +676,8 @@ export default function App() {
             onNavigate={(tab) => setActiveTab(tab)}
           />
         )}
+        </Suspense>
+        </ErrorBoundary>
       </main>
 
       {/* Settings Modal */}
@@ -693,10 +706,14 @@ export default function App() {
       />
 
       {/* Interactive Python 3.10 Engine Diagnostic Terminal */}
-      <PythonEngineConsoleModal
+      {isPythonConsoleOpen && (
+<Suspense fallback={null}>
+<PythonEngineConsoleModal
         isOpen={isPythonConsoleOpen}
         onClose={() => setIsPythonConsoleOpen(false)}
       />
+</Suspense>
+)}
 
       {/* Global Search Modal */}
       {isSearchOpen && (

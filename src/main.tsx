@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 import { registerServiceWorker } from './services/offlineSyncService';
 
@@ -9,6 +10,8 @@ registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary scope="app" label="BOLT">
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

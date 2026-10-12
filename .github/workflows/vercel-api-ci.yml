@@ -2,11 +2,7 @@ name: Verify Vercel API Fix
 
 on:
   push:
-    branches:
-      - fix/vercel-production-api
   pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -38,3 +34,9 @@ jobs:
         run: npm run test:security
       - name: Acceptance tests
         run: npm run test:acceptance
+      - name: Serverless runtime tests
+        run: npm run test:serverless
+      - name: Health and job tests
+        run: npm run test:health
+      - name: Auth forgery tests
+        run: npm run test:auth
