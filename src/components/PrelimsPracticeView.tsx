@@ -304,7 +304,7 @@ export const PrelimsPracticeView: React.FC<PrelimsPracticeViewProps> = ({
                     : "bg-[#162033] text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800"
                 }`}
               >
-                <span>{q.questionNumber || idx + 1}</span>
+                <span>{idx + 1}</span>
                 {isFlagged && (
                   <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full ring-2 ring-[#111723]" />
                 )}
@@ -320,7 +320,7 @@ export const PrelimsPracticeView: React.FC<PrelimsPracticeViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
             <span className="text-xs px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 font-bold border border-blue-500/20">
-              Q{currentQ.questionNumber || safeIndex + 1} of {effectiveQuestions.length}
+              Q{safeIndex + 1} of {effectiveQuestions.length}
             </span>
             <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-semibold border border-slate-700">
               {currentQ.subject}
