@@ -314,14 +314,22 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.articles) && data.articles.length > 0) {
+            // Merge server articles over the locally cached copy: previously a non-empty
+            // localStorage cache was kept forever, so users never saw newer news.
             setArticles((prev) => {
-              if (prev.length === 0) {
-                try {
-                  localStorage.setItem("bolt_news_articles", JSON.stringify(data.articles));
-                } catch {}
-                return data.articles;
+              const seen = new Set<string>();
+              const merged: NewsArticle[] = [];
+              for (const a of [...data.articles, ...prev]) {
+                const key = (a?.headline || "").toLowerCase().trim();
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                merged.push(a);
               }
-              return prev;
+              const next = merged.slice(0, 300);
+              try {
+                localStorage.setItem("bolt_news_articles", JSON.stringify(next));
+              } catch {}
+              return next;
             });
           }
         }
