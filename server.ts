@@ -41,7 +41,7 @@ import {
 import { computeTopicDiagnostic } from "./server/knowledgeScoring";
 import { isPythonAvailable, assertPythonAvailable, PythonUnavailableError, isServerless } from "./server/runtimeEnv";
 import { summarizeAiHealth, summarizePipelineHealth, hasUsableKey } from "./server/healthSummary";
-import { ensureNewsLoadedForServer } from "./server/newsBootstrap";
+import { ensureNewsLoadedForServer, isNewsStale, STALE_REFRESH_BUDGET_MS } from "./server/newsBootstrap";
 import { BoltAIGateway, getGatewayConfig, updateGatewayConfig, executeGeminiWithFailover, getGeminiClient, isGeminiKeyDenied } from "./server/aiGateway";
 import { StudentIntelligenceEngine, CANONICAL_TOPIC_GRAPH } from "./server/studentIntelligence";
 import { BoltAgentRuntime } from "./server/boltAgentRuntime";
@@ -1704,13 +1704,16 @@ app.post("/api/news/pipeline/mcqs", requireAuth, async (req, res) => {
 // 1.1.2 Daily Current Affairs Scheduled Trigger & Auto-Sync API
 app.get("/api/news/daily-current-affairs", requireAuth, async (_req, res) => {
   try {
-    const { articles: firestoreArticles } = await loadCurrentAffairsFromFirestore();
+    const { articles: firestoreArticles, updatedAt } = await loadCurrentAffairsFromFirestore();
     let articles = firestoreArticles;
     let sync: Awaited<ReturnType<typeof ensureNewsLoadedForServer>> | null = null;
+    // Guarded (cooldown + in-flight) so readers cannot trigger unbounded ingestion.
     if (!articles || articles.length === 0) {
-      // Guarded (cooldown + in-flight) so readers cannot trigger unbounded ingestion.
       sync = await ensureNewsLoadedForServer();
       if (sync.attempted && sync.status?.ok) articles = (await loadCurrentAffairsFromFirestore()).articles;
+    } else if (isNewsStale(updatedAt)) {
+      sync = await ensureNewsLoadedForServer({ budgetMs: STALE_REFRESH_BUDGET_MS }).catch(() => null);
+      if (sync?.attempted && sync.status?.ok) articles = (await loadCurrentAffairsFromFirestore()).articles;
     }
     const status = await getPipelineStatusFromFirestore();
     res.json({

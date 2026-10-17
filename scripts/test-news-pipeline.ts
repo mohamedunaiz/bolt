@@ -22,7 +22,7 @@ import {
   type IngestionDeps,
 } from "../server/currentAffairsPipeline";
 import { fetchGroundedNews } from "../server/liveNewsFallback";
-import { ensureNewsLoaded, type NewsSyncStatus } from "../server/newsBootstrap";
+import { ensureNewsLoaded, isNewsStale, NEWS_MAX_AGE_MS, type NewsSyncStatus } from "../server/newsBootstrap";
 import type { NewsArticle } from "../src/types";
 
 let passed = 0;
@@ -352,6 +352,16 @@ async function run() {
     const r8 = await ensureNewsLoaded({ ...s8, runIngestion: () => new Promise((res) => setTimeout(() => res(okRun()), 2000)), budgetMs: 50, now: () => 5_000_000 });
     check("slow pipeline is cut off by the budget", Date.now() - t0 < 1000 && /budget/.test(r8.status?.error || ""));
     check("a failed status write never masks the result", (await ensureNewsLoaded({ readStatus: async () => null, writeStatus: async (s) => { if (!s.inFlight) throw new Error("write failed"); }, runIngestion: okRun, now: () => 5_000_000 })).status?.ok === true);
+  }
+
+  // 12. Staleness detection
+  {
+    console.log("\n[12] Staleness-aware refresh");
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    check("fresh news (1h old) is not stale", !isNewsStale("2026-10-17T11:00:00Z", now));
+    check("news just inside the max age is not stale", !isNewsStale(new Date(now - NEWS_MAX_AGE_MS + 1000).toISOString(), now));
+    check("news older than max age is stale", isNewsStale("2026-10-16T11:00:00Z", now));
+    check("missing/invalid updatedAt is stale", isNewsStale(null, now) && isNewsStale("garbage", now));
   }
 
   console.log("\n===========================================");

@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { loadCurrentAffairsFromFirestore } from "../../server/currentAffairsPipeline.js";
-import { ensureNewsLoadedForServer, type BootstrapResult } from "../../server/newsBootstrap.js";
+import { ensureNewsLoadedForServer, isNewsStale, STALE_REFRESH_BUDGET_MS, type BootstrapResult } from "../../server/newsBootstrap.js";
 
 /**
  * Hosting-agnostic read-only current-affairs endpoint.
@@ -19,9 +19,15 @@ export default async function handler(req: Request, res: Response) {
 
     // Empty store: do not wait for a cron that may never have run (or lacks CRON_SECRET).
     // Trigger one bounded, rate-limited ingestion and record why it failed if it does.
-    if (!Array.isArray(result?.articles) || result.articles.length === 0) {
+    const hasArticles = Array.isArray(result?.articles) && result.articles.length > 0;
+    if (!hasArticles) {
       sync = await ensureNewsLoadedForServer();
       if (sync.attempted && sync.status?.ok) result = await loadCurrentAffairsFromFirestore();
+    } else if (isNewsStale(result?.updatedAt)) {
+      // Stored news is old (cron missed or failing): try one bounded, rate-limited refresh,
+      // but never fail the request - fall back to what is stored.
+      sync = await ensureNewsLoadedForServer({ budgetMs: STALE_REFRESH_BUDGET_MS }).catch(() => null);
+      if (sync?.attempted && sync.status?.ok) result = await loadCurrentAffairsFromFirestore();
     }
 
     const articles = Array.isArray(result?.articles) ? result.articles : [];
@@ -40,6 +46,7 @@ export default async function handler(req: Request, res: Response) {
       sourceStats: { working: sources.length, failed: 0 },
       count: articles.length,
       updatedAt: result?.updatedAt ?? null,
+      stale: state === "ok" ? isNewsStale(result?.updatedAt) : undefined,
       message:
         state === "ok"
           ? undefined

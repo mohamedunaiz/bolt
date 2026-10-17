@@ -49,6 +49,16 @@ export interface BootstrapResult {
   status: NewsSyncStatus | null;
 }
 
+/** News older than this is refreshed on read (the daily cron alone leaves a ~24h gap and is a single point of failure). */
+export const NEWS_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+/** Shorter wait for readers who already have (stale) articles to show. */
+export const STALE_REFRESH_BUDGET_MS = 25_000;
+
+export function isNewsStale(updatedAt: string | null | undefined, now: number = Date.now(), maxAgeMs: number = NEWS_MAX_AGE_MS): boolean {
+  const t = updatedAt ? Date.parse(updatedAt) : NaN;
+  return !Number.isFinite(t) || now - t > maxAgeMs;
+}
+
 const TRIM = 300;
 const trim = (s: string) => (s.length > TRIM ? `${s.slice(0, TRIM)}...` : s);
 
@@ -109,7 +119,7 @@ const STATUS_COLLECTION = "news_sync_status";
 const STATUS_DOC = "latest";
 
 /** Production wiring: Firestore-backed status + the real ingestion pipeline. */
-export async function ensureNewsLoadedForServer(): Promise<BootstrapResult> {
+export async function ensureNewsLoadedForServer(opts: { budgetMs?: number } = {}): Promise<BootstrapResult> {
   const db = getAdminFirestore();
   if (!db) {
     return {
@@ -133,5 +143,6 @@ export async function ensureNewsLoadedForServer(): Promise<BootstrapResult> {
       await ref.set(JSON.parse(JSON.stringify(s)));
     },
     runIngestion: () => executeNewsIngestionPipeline(),
+    budgetMs: opts.budgetMs,
   });
 }
